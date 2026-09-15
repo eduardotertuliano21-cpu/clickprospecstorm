@@ -6,7 +6,7 @@
  * - anonKey: Project API Anon Key (public)
  */
 export const SUPABASE_CONFIG = {
-  url: process.env.SUPABASE_URL || '',
+  url: process.env.SUPABASE_URL || 'https://ssbtgywzeezxocibajcx.supabase.co',
   anonKey: process.env.SUPABASE_ANON_KEY || '',
   get isConfigured(): boolean {
     return !!(this.url && this.anonKey && this.url.startsWith('https://'));

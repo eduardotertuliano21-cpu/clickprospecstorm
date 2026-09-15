@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Production builds & binaries
+dist/
+dist-electron/
+release/
+release-installer/
+*.exe
+*.blockmap
+server/dist/
+
+# Secrets & sensitive keys
+Keys*
+*.key
+*.pem
+.env
+.env.local
+.env.*.local
+server/.env
+server/data/database.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# WhatsApp and session data
+baileys_auth/
+whatsapp_sessions/
+*.session
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

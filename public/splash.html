@@ -1,0 +1,198 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Click Lead Storm - Carregando</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-drag: none;
+      -webkit-app-region: drag;
+    }
+
+    body {
+      background: #090d16;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .card {
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 50% 15%, #0f172a 0%, #060911 60%, #020617 100%);
+      border: 1px solid rgba(51, 65, 85, 0.7);
+      box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 38px 36px 28px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .glow-bg {
+      position: absolute;
+      top: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 360px;
+      height: 190px;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.22) 0%, rgba(0, 0, 0, 0) 70%);
+      pointer-events: none;
+    }
+
+    .logo-container {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      animation: fadeInScale 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .logo-img {
+      max-width: 420px;
+      height: auto;
+      max-height: 115px;
+      object-fit: contain;
+      filter: drop-shadow(0 8px 26px rgba(16, 185, 129, 0.25));
+    }
+
+    .loading-section {
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-text {
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      transition: opacity 0.3s ease;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 5px;
+      background: rgba(30, 41, 59, 0.9);
+      border-radius: 9999px;
+      overflow: hidden;
+      border: 1px solid rgba(51, 65, 85, 0.6);
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 40%;
+      background: linear-gradient(90deg, #10b981, #34d399, #14b8a6);
+      border-radius: 9999px;
+      box-shadow: 0 0 14px rgba(52, 211, 153, 0.7);
+      animation: indeterminate 2s infinite ease-in-out;
+    }
+
+    .footer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .developer-tag {
+      font-size: 11px;
+      color: #64748b;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .developer-name {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: linear-gradient(to right, #34d399, #a7f3d0, #6ee7b7);
+      -webkit-background-clip: text;
+      -webkit-fill-color: transparent;
+      text-shadow: 0 2px 12px rgba(16, 185, 129, 0.25);
+    }
+
+    @keyframes indeterminate {
+      0% {
+        transform: translateX(-100%);
+        width: 25%;
+      }
+      50% {
+        width: 55%;
+      }
+      100% {
+        transform: translateX(380%);
+        width: 25%;
+      }
+    }
+
+    @keyframes fadeInScale {
+      from {
+        opacity: 0;
+        transform: scale(0.93) translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="glow-bg"></div>
+
+    <div class="logo-container">
+      <img src="splash-logo.png" onerror="this.src='logo.png'" alt="Click Lead Storm" class="logo-img">
+    </div>
+
+    <div class="loading-section">
+      <div class="progress-track">
+        <div class="progress-bar"></div>
+      </div>
+      <div class="status-text" id="status-text">Inicializando serviços e banco de dados...</div>
+    </div>
+
+    <div class="footer">
+      <span class="developer-tag">Desenvolvido Por</span>
+      <span class="developer-name">Eduardo Tertuliano</span>
+    </div>
+  </div>
+
+  <script>
+    const steps = [
+      'Inicializando serviços e banco de dados local...',
+      'Carregando motores de prospecção e CRM...',
+      'Iniciando módulos de Inteligência Artificial...',
+      'Pronto! Abrindo o Click Lead Storm...'
+    ];
+    let i = 0;
+    setInterval(() => {
+      i = (i + 1) % steps.length;
+      const el = document.getElementById('status-text');
+      if (el) {
+        el.style.opacity = '0';
+        setTimeout(() => {
+          el.textContent = steps[i];
+          el.style.opacity = '1';
+        }, 150);
+      }
+    }, 1100);
+  </script>
+</body>
+</html>

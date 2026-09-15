@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  click-lead-storm-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: click-lead-storm-server
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      - JWT_SECRET=cls_master_secret_jwt_prod_2026_x89a

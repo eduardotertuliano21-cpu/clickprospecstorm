@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Click Lead Storm - Painel Master de Licenças</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- React 18 & Babel Standalone -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #090d16; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans selection:bg-emerald-500 selection:text-white">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    const API_BASE = window.location.origin + '/api/v1';
+
+    function App() {
+      const [token, setToken] = useState(localStorage.getItem('cls_master_token') || '');
+      const [adminEmail, setAdminEmail] = useState(localStorage.getItem('cls_master_email') || '');
+      const [loginEmail, setLoginEmail] = useState('eduardo.tertuliano21@gmail.com');
+      const [loginPass, setLoginPass] = useState('admin123');
+      const [loginLoading, setLoginLoading] = useState(false);
+      const [loginError, setLoginError] = useState('');
+
+      // Dados do Dashboard
+      const [metrics, setMetrics] = useState(null);
+      const [customers, setCustomers] = useState([]);
+      const [loadingData, setLoadingData] = useState(false);
+      const [statusFilter, setStatusFilter] = useState('all');
+      const [searchQuery, setSearchQuery] = useState('');
+
+      // Modais
+      const [showCreateModal, setShowCreateModal] = useState(false);
+      const [showVersionModal, setShowVersionModal] = useState(false);
+      const [showChangePassModal, setShowChangePassModal] = useState(false);
+      const [createdLicenseInfo, setCreatedLicenseInfo] = useState(null);
+      const [tempPassResult, setTempPassResult] = useState(null);
+      const [toastMsg, setToastMsg] = useState('');
+
+      const showToast = (msg) => {
+        setToastMsg(msg);
+        setTimeout(() => setToastMsg(''), 4000);
+      };
+
+      const handleLogin = async (e) => {
+        e.preventDefault();
+        setLoginLoading(true);
+        setLoginError('');
+        try {
+          const res = await fetch(`${API_BASE}/admin/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: loginEmail, password: loginPass })
+          });
+          const data = await res.json();
+          if (data.success) {
+            localStorage.setItem('cls_master_token', data.token);
+            localStorage.setItem('cls_master_email', data.admin.email);
+            setToken(data.token);
+            setAdminEmail(data.admin.email);
+            showToast('✅ Login de Administrador Master efetuado com sucesso!');
+          } else {
+            setLoginError(data.error || 'Credenciais inválidas.');
+          }
+        } catch (err) {
+          setLoginError('Falha ao conectar à API do servidor.');
+        } finally {
+          setLoginLoading(false);
+        }
+      };
+
+      const handleLogout = () => {
+        localStorage.removeItem('cls_master_token');
+        localStorage.removeItem('cls_master_email');
+        setToken('');
+        setAdminEmail('');
+      };
+
+      const fetchDashboardData = async () => {
+        if (!token) return;
+        setLoadingData(true);
+        try {
+          const headers = { 'Authorization': `Bearer ${token}` };
+          
+          const [resMetrics, resCust] = await Promise.all([
+            fetch(`${API_BASE}/admin/metrics`, { headers }),
+            fetch(`${API_BASE}/admin/customers?status=${statusFilter}&search=${encodeURIComponent(searchQuery)}`, { headers })
+          ]);
+
+          if (resMetrics.status === 401 || resCust.status === 401) {
+            handleLogout();
+            return;
+          }
+
+          const dataMetrics = await resMetrics.json();
+          const dataCust = await resCust.json();
+
+          if (dataMetrics.success) setMetrics(dataMetrics.data);
+          if (dataCust.success) setCustomers(dataCust.data.customers);
+        } catch (err) {
+          console.error('Erro ao carregar dados:', err);
+        } finally {
+          setLoadingData(false);
+        }
+      };
+
+      useEffect(() => {
+        if (token) {
+          fetchDashboardData();
+        }
+      }, [token, statusFilter, searchQuery]);
+
+      // Ações por Linha
+      const handleToggleStatus = async (customer) => {
+        const nextStatus = customer.status === 'blocked' ? 'active' : 'blocked';
+        try {
+          const res = await fetch(`${API_BASE}/admin/customers/${customer.id}/status`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ status: nextStatus })
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast(`Status de ${customer.customerName} alterado para ${nextStatus.toUpperCase()}`);
+            fetchDashboardData();
+          }
+        } catch (e) {
+          showToast('Erro ao alternar status.');
+        }
+      };
+
+      const handleResetMachine = async (customer) => {
+        if (!confirm(`Deseja desvincular o Hardware ID do cliente ${customer.customerName}? Ele poderá ativar em um novo computador.`)) return;
+        try {
+          const res = await fetch(`${API_BASE}/admin/customers/${customer.id}/reset-machine`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('✅ Hardware ID desvinculado com sucesso!');
+            fetchDashboardData();
+          }
+        } catch (e) {
+          showToast('Erro ao resetar PC.');
+        }
+      };
+
+      const handleExtend30Days = async (customer) => {
+        try {
+          const res = await fetch(`${API_BASE}/admin/customers/${customer.id}/extend`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ days: 30 })
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast(`✅ Licença de ${customer.customerName} estendida em +30 dias!`);
+            fetchDashboardData();
+          }
+        } catch (e) {
+          showToast('Erro ao estender licença.');
+        }
+      };
+
+      const handleResetPassword = async (customer) => {
+        try {
+          const res = await fetch(`${API_BASE}/admin/customers/${customer.id}/reset-password`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            setTempPassResult({ customer: customer.customerName, pass: data.tempPassword });
+          }
+        } catch (e) {
+          showToast('Erro ao resetar senha.');
+        }
+      };
+
+      const handleDeleteCustomer = async (customer) => {
+        if (!confirm(`Tem certeza que deseja excluir o cliente ${customer.customerName}? Esta ação é irreversível.`)) return;
+        try {
+          const res = await fetch(`${API_BASE}/admin/customers/${customer.id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Registro excluído com sucesso.');
+            fetchDashboardData();
+          }
+        } catch (e) {
+          showToast('Erro ao excluir cliente.');
+        }
+      };
+
+      // TELA DE LOGIN MASTER
+      if (!token) {
+        return (
+          <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
+            <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div className="w-full max-w-md bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-8 rounded-2xl shadow-2xl relative z-10">
+              <div className="text-center mb-8">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 mb-3 shadow-lg shadow-emerald-500/10">
+                  <span className="text-3xl">👑</span>
+                </div>
+                <h1 className="text-2xl font-bold text-white tracking-tight">Click Lead Storm</h1>
+                <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">Painel Master de Licenças & Clientes</p>
+              </div>
+
+              {loginError && (
+                <div className="mb-4 p-3 bg-red-950/50 border border-red-500/50 rounded-xl text-red-300 text-xs flex items-center gap-2">
+                  <span>⚠️</span> {loginError}
+                </div>
+              )}
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">E-mail do Administrador</label>
+                  <input 
+                    type="email" 
+                    value={loginEmail} 
+                    onChange={e => setLoginEmail(e.target.value)} 
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500 transition"
+                    required 
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Senha Mestre</label>
+                  <input 
+                    type="password" 
+                    value={loginPass} 
+                    onChange={e => setLoginPass(e.target.value)} 
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500 transition"
+                    required 
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={loginLoading}
+                  className="w-full mt-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold py-3 rounded-xl shadow-lg shadow-emerald-600/30 transition duration-200 text-sm flex items-center justify-center gap-2"
+                >
+                  {loginLoading ? 'Verificando credenciais...' : 'Acessar Painel Master'}
+                </button>
+              </form>
+
+              <div className="mt-6 pt-5 border-t border-slate-800 text-center text-[11px] text-slate-500">
+                Desenvolvido por Eduardo Tertuliano • Servidor de Produção
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // PAINEL ADMINISTRATIVO MASTER PRINCIPAL
+      return (
+        <div className="min-h-screen bg-slate-950 flex flex-col">
+          {/* Toast Notification */}
+          {toastMsg && (
+            <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 border border-emerald-500 text-emerald-200 px-5 py-3 rounded-xl shadow-2xl text-xs flex items-center gap-2">
+              <span>🔔</span> {toastMsg}
+            </div>
+          )}
+
+          {/* BARRA SUPERIOR */}
+          <header className="bg-slate-900/80 backdrop-blur border-b border-slate-800 px-6 py-3.5 flex items-center justify-between sticky top-0 z-30">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-md shadow-emerald-500/20 text-white font-bold text-lg">
+                ⚡
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-base font-bold text-white leading-tight">Click Lead Storm</h1>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                    PAINEL MASTER
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">Servidor Central de Licenciamento & Controle de Versões</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center gap-2 text-xs bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-slate-400">API Central:</span>
+                <strong className="text-slate-200">Online (:4000)</strong>
+              </div>
+
+              <button 
+                onClick={() => setShowVersionModal(true)}
+                className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5"
+              >
+                ⚙️ Versões
+              </button>
+
+              <button 
+                onClick={() => setShowChangePassModal(true)}
+                className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5"
+              >
+                🔒 Senha Mestre
+              </button>
+
+              <button 
+                onClick={handleLogout}
+                className="text-xs bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-500/40 px-3 py-1.5 rounded-lg transition"
+              >
+                Sair
+              </button>
+            </div>
+          </header>
+
+          {/* CONTEÚDO PRINCIPAL */}
+          <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+            {/* CARDS DE MÉTRICAS */}
+            {metrics && (
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="bg-slate-900/70 border border-slate-800 p-4 rounded-2xl shadow-sm">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Clientes</span>
+                  <div className="text-2xl font-bold text-white mt-1">{metrics.totalCustomers}</div>
+                  <span className="text-[11px] text-slate-500">Base cadastrada</span>
+                </div>
+
+                <div className="bg-slate-900/70 border border-emerald-500/20 p-4 rounded-2xl shadow-sm">
+                  <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">🟢 Licenças Ativas</span>
+                  <div className="text-2xl font-bold text-emerald-400 mt-1">{metrics.activeLicenses}</div>
+                  <span className="text-[11px] text-slate-500">Comerciais em dia</span>
+                </div>
+
+                <div className="bg-slate-900/70 border border-amber-500/20 p-4 rounded-2xl shadow-sm">
+                  <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">🟡 Trials Ativos</span>
+                  <div className="text-2xl font-bold text-amber-400 mt-1">{metrics.runningTrials}</div>
+                  <span className="text-[11px] text-slate-500">Demonstração (20 envios)</span>
+                </div>
+
+                <div className="bg-slate-900/70 border border-red-500/20 p-4 rounded-2xl shadow-sm">
+                  <span className="text-xs font-semibold text-red-400 uppercase tracking-wider">🔴 Bloqueados</span>
+                  <div className="text-2xl font-bold text-red-400 mt-1">{metrics.blockedLicenses}</div>
+                  <span className="text-[11px] text-slate-500">Acesso suspenso</span>
+                </div>
+
+                <div className="bg-slate-900/70 border border-indigo-500/20 p-4 rounded-2xl shadow-sm col-span-2 lg:col-span-1">
+                  <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Versão Vigente</span>
+                  <div className="text-xl font-bold text-indigo-300 mt-1">v{metrics.latestVersion}</div>
+                  <span className="text-[11px] text-slate-500">Mín: v{metrics.minVersionRequired}</span>
+                </div>
+              </div>
+            )}
+
+            {/* BARRA DE AÇÕES E BUSCA */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+              <div className="flex flex-wrap items-center gap-2">
+                <button 
+                  onClick={() => setShowCreateModal(true)}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center gap-2"
+                >
+                  <span>➕</span> Gerar Nova Licença / Teste
+                </button>
+
+                <div className="flex items-center bg-slate-950 border border-slate-700 rounded-xl p-1 text-xs">
+                  {['all', 'active', 'trial', 'blocked', 'expired'].map((st) => (
+                    <button
+                      key={st}
+                      onClick={() => setStatusFilter(st)}
+                      className={`px-3 py-1 rounded-lg font-medium transition ${
+                        statusFilter === st ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {st === 'all' ? 'Todos' : st === 'active' ? 'Ativos' : st === 'trial' ? 'Trials' : st === 'blocked' ? 'Bloqueados' : 'Expirados'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative w-full md:w-80">
+                <input 
+                  type="text" 
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Buscar por cliente, e-mail, chave ou hardware..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2 text-slate-400 hover:text-slate-200 text-xs">✕</button>
+                )}
+              </div>
+            </div>
+
+            {/* TABELA DE CLIENTES & LICENÇAS */}
+            <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+              <div className="overflow-x-auto custom-scroll">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950/80 border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400">
+                    <tr>
+                      <th className="py-3 px-4">Cliente / Empresa</th>
+                      <th className="py-3 px-4">Chave de Licença</th>
+                      <th className="py-3 px-4">Hardware ID (PC)</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Versão</th>
+                      <th className="py-3 px-4">Expiração</th>
+                      <th className="py-3 px-4 text-right">Ações Rápidas</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {loadingData ? (
+                      <tr>
+                        <td colSpan="7" className="py-8 text-center text-slate-500">Carregando licenças do banco central...</td>
+                      </tr>
+                    ) : customers.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="py-8 text-center text-slate-500">Nenhum cliente ou licença encontrado com os filtros atuais.</td>
+                      </tr>
+                    ) : (
+                      customers.map((c) => {
+                        const isExpired = c.expiresAt && new Date(c.expiresAt).getTime() < Date.now();
+                        const isBlocked = c.status === 'blocked';
+
+                        return (
+                          <tr key={c.id} className="hover:bg-slate-800/40 transition">
+                            <td className="py-3 px-4">
+                              <div className="font-semibold text-white">{c.customerName}</div>
+                              <div className="text-[11px] text-slate-400">{c.customerEmail}</div>
+                              {c.phone && <div className="text-[10px] text-slate-500">{c.phone}</div>}
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <code className="bg-slate-950 px-2 py-1 rounded border border-slate-800 font-mono text-[11px] text-emerald-400 select-all">
+                                {c.licenseKey}
+                              </code>
+                              <div className="text-[10px] text-slate-500 mt-0.5">
+                                Cota: <strong>{c.dailyLimit >= 99999 ? 'Ilimitado' : `${c.dailyLimit}/dia`}</strong>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              {c.machineId ? (
+                                <span className="font-mono text-[10px] text-slate-300 bg-slate-950 px-2 py-0.5 rounded border border-slate-800" title={c.machineId}>
+                                  {c.machineId.substring(0, 16)}...
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-amber-400/80 italic">Aguardando 1º uso</span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4">
+                              {isBlocked ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-300 border border-red-500/30">
+                                  BLOQUEADO
+                                </span>
+                              ) : isExpired ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                                  EXPIRADO
+                                </span>
+                              ) : c.isTrial ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                  TRIAL TESTE
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  ATIVO
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4 text-[11px] text-slate-400 font-mono">
+                              {c.currentAppVersion ? `v${c.currentAppVersion}` : '—'}
+                            </td>
+
+                            <td className="py-3 px-4 text-[11px]">
+                              {c.expiresAt ? (
+                                <span className={isExpired ? 'text-red-400 font-semibold' : 'text-slate-300'}>
+                                  {new Date(c.expiresAt).toLocaleDateString('pt-BR')}
+                                </span>
+                              ) : (
+                                <span className="text-emerald-400 font-semibold">Vitalício</span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => handleToggleStatus(c)}
+                                  className={`px-2 py-1 rounded text-[11px] font-semibold border transition ${
+                                    isBlocked 
+                                      ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900/60' 
+                                      : 'bg-red-950/40 text-red-300 border-red-500/40 hover:bg-red-900/60'
+                                  }`}
+                                  title={isBlocked ? 'Reativar cliente' : 'Bloquear cliente'}
+                                >
+                                  {isBlocked ? 'Desbloquear' : 'Bloquear'}
+                                </button>
+
+                                <button
+                                  onClick={() => handleResetMachine(c)}
+                                  className="px-2 py-1 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                                  title="Limpa o vínculo com a máquina atual para permitir novo PC"
+                                >
+                                  🔄 Resetar PC
+                                </button>
+
+                                <button
+                                  onClick={() => handleResetPassword(c)}
+                                  className="px-2 py-1 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                                  title="Gera uma senha temporária"
+                                >
+                                  🔑 Senha
+                                </button>
+
+                                <button
+                                  onClick={() => handleExtend30Days(c)}
+                                  className="px-2 py-1 rounded text-[11px] bg-indigo-950/40 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-900/60 transition"
+                                  title="Adiciona 30 dias de validade"
+                                >
+                                  +30 Dias
+                                </button>
+
+                                <button
+                                  onClick={() => handleDeleteCustomer(c)}
+                                  className="p-1 text-slate-500 hover:text-red-400 transition"
+                                  title="Excluir"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </main>
+
+          {/* MODAL 1: CRIAR NOVA LICENÇA / TESTE */}
+          {showCreateModal && (
+            <CreateLicenseModal 
+              token={token} 
+              onClose={() => setShowCreateModal(false)} 
+              onCreated={(lic) => {
+                setShowCreateModal(false);
+                setCreatedLicenseInfo(lic);
+                fetchDashboardData();
+              }}
+            />
+          )}
+
+          {/* MODAL 2: DETALHES DA LICENÇA GERADA (COM TEMPLATE PRONTO PARA WHATSAPP) */}
+          {createdLicenseInfo && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>🎉</span> Licença Gerada com Sucesso!
+                  </h3>
+                  <button onClick={() => setCreatedLicenseInfo(null)} className="text-slate-400 hover:text-white">✕</button>
+                </div>
+
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400">Cliente:</span>
+                    <strong className="text-white">{createdLicenseInfo.data.customerName}</strong>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400">Chave de Acesso:</span>
+                    <strong className="font-mono text-emerald-400 text-sm">{createdLicenseInfo.data.licenseKey}</strong>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Mensagem Pronta para Envio Comercial (WhatsApp / E-mail):
+                  </label>
+                  <textarea 
+                    readOnly 
+                    value={createdLicenseInfo.messageTemplate} 
+                    className="w-full h-44 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 font-mono focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(createdLicenseInfo.data.licenseKey);
+                      showToast('Chave copiada para a área de transferência!');
+                    }}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-4 py-2 rounded-xl border border-slate-700"
+                  >
+                    Copiar Apenas a Chave
+                  </button>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(createdLicenseInfo.messageTemplate);
+                      showToast('Mensagem completa copiada para a área de transferência!');
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg shadow-emerald-600/30"
+                  >
+                    Copiar Mensagem de Entrega
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL 3: EXIBIÇÃO DE SENHA TEMPORÁRIA GERADA */}
+          {tempPassResult && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl">
+                <span className="text-4xl">🔑</span>
+                <h3 className="text-base font-bold text-white">Nova Senha Temporária</h3>
+                <p className="text-xs text-slate-400">Repasse esta senha ao cliente <strong>{tempPassResult.customer}</strong>:</p>
+                <div className="bg-slate-950 border border-slate-700 py-3 rounded-xl font-mono text-xl font-bold text-emerald-400 select-all tracking-wider">
+                  {tempPassResult.pass}
+                </div>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(tempPassResult.pass);
+                    showToast('Senha copiada!');
+                    setTempPassResult(null);
+                  }}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-xl shadow-lg"
+                >
+                  Copiar e Fechar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL 4: CONTROLE GLOBAL DE VERSÕES E ATUALIZAÇÃO OBRIGATÓRIA */}
+          {showVersionModal && (
+            <VersionControlModal 
+              token={token}
+              onClose={() => setShowVersionModal(false)}
+              onSaved={() => {
+                setShowVersionModal(false);
+                showToast('Configurações de versão atualizadas e sincronizadas!');
+                fetchDashboardData();
+              }}
+            />
+          )}
+
+          {/* MODAL 5: TROCA DE SENHA MESTRE */}
+          {showChangePassModal && (
+            <ChangeMasterPasswordModal 
+              token={token}
+              onClose={() => setShowChangePassModal(false)}
+              onSuccess={() => {
+                setShowChangePassModal(false);
+                showToast('Senha mestre alterada com sucesso!');
+              }}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // COMPONENTE: MODAL DE CRIAÇÃO DE LICENÇA
+    function CreateLicenseModal({ token, onClose, onCreated }) {
+      const [name, setName] = useState('');
+      const [email, setEmail] = useState('');
+      const [phone, setPhone] = useState('');
+      const [licenseType, setLicenseType] = useState('pro');
+      const [validityDays, setValidityDays] = useState(30);
+      const [dailyLimit, setDailyLimit] = useState(99999);
+      const [pricePaid, setPricePaid] = useState(197);
+      const [loading, setLoading] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+          const res = await fetch(`${API_BASE}/admin/licenses/create`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              customerName: name,
+              customerEmail: email,
+              phone,
+              licenseType,
+              validityDays,
+              dailyLimit,
+              pricePaid
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            onCreated(data);
+          } else {
+            alert(data.error || 'Erro ao gerar licença.');
+          }
+        } catch (e) {
+          alert('Falha na requisição.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>➕</span> Criar Nova Licença / Demonstração
+              </h3>
+              <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nome do Cliente / Empresa</label>
+                <input 
+                  type="text" 
+                  value={name} 
+                  onChange={e => setName(e.target.value)} 
+                  placeholder="Ex: Pedro Alcantara ou Loja X"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100" 
+                  required 
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">E-mail</label>
+                  <input 
+                    type="email" 
+                    value={email} 
+                    onChange={e => setEmail(e.target.value)} 
+                    placeholder="cliente@empresa.com"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100" 
+                    required 
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">WhatsApp / Telefone</label>
+                  <input 
+                    type="text" 
+                    value={phone} 
+                    onChange={e => setPhone(e.target.value)} 
+                    placeholder="5511999998888"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100" 
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Tipo de Licença</label>
+                  <select 
+                    value={licenseType} 
+                    onChange={e => {
+                      const val = e.target.value;
+                      setLicenseType(val);
+                      if (val === 'trial') {
+                        setValidityDays(7);
+                        setDailyLimit(20);
+                        setPricePaid(0);
+                      } else {
+                        setValidityDays(30);
+                        setDailyLimit(99999);
+                        setPricePaid(197);
+                      }
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100"
+                  >
+                    <option value="pro">Comercial (Pro / Paga)</option>
+                    <option value="trial">Demonstração (Trial)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Validade (Dias)</label>
+                  <select 
+                    value={validityDays} 
+                    onChange={e => setValidityDays(parseInt(e.target.value, 10))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100"
+                  >
+                    <option value={3}>3 Dias</option>
+                    <option value={7}>7 Dias</option>
+                    <option value={15}>15 Dias</option>
+                    <option value={30}>30 Dias (Mensal)</option>
+                    <option value={90}>90 Dias (Trimestral)</option>
+                    <option value={365}>365 Dias (Anual)</option>
+                    <option value={0}>Acesso Vitalício</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Cota Diária de Disparos</label>
+                  <input 
+                    type="number" 
+                    value={dailyLimit} 
+                    onChange={e => setDailyLimit(parseInt(e.target.value, 10))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100" 
+                  />
+                  <span className="text-[10px] text-slate-500">99999 = Ilimitado</span>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Valor Cobrado (R$)</label>
+                  <input 
+                    type="number" 
+                    value={pricePaid} 
+                    onChange={e => setPricePaid(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100" 
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl">Cancelar</button>
+                <button type="submit" disabled={loading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg">
+                  {loading ? 'Gerando...' : 'Gerar Licença Oficial'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // COMPONENTE: MODAL DE CONTROLE DE VERSÕES
+    function VersionControlModal({ token, onClose, onSaved }) {
+      const [minVersion, setMinVersion] = useState('1.0.0');
+      const [latestVersion, setLatestVersion] = useState('1.0.0');
+      const [downloadUrl, setDownloadUrl] = useState('');
+      const [forceMsg, setForceMsg] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      useEffect(() => {
+        fetch(`${API_BASE}/admin/config/versions`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(r => r.json())
+          .then(d => {
+            if (d.success) {
+              setMinVersion(d.data.minVersionRequired);
+              setLatestVersion(d.data.latestVersion);
+              setDownloadUrl(d.data.downloadUrl);
+              setForceMsg(d.data.forceUpdateMessage);
+            }
+          });
+      }, []);
+
+      const handleSave = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+          const res = await fetch(`${API_BASE}/admin/config/versions`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              minVersionRequired: minVersion,
+              latestVersion,
+              downloadUrl,
+              forceUpdateMessage: forceMsg
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            onSaved();
+          }
+        } catch (err) {
+          alert('Erro ao salvar versões.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>🛡️</span> Controle Global de Versões & Bloqueio
+              </h3>
+              <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Ao alterar a <strong>Versão Mínima Obrigatória</strong>, qualquer usuário no Windows com versão inferior será automaticamente bloqueado no próximo handshake.
+            </p>
+
+            <form onSubmit={handleSave} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Versão Mínima Obrigatória</label>
+                <input 
+                  type="text" 
+                  value={minVersion} 
+                  onChange={e => setMinVersion(e.target.value)} 
+                  className="w-full bg-slate-950 border border-red-500/40 rounded-xl px-3 py-2 text-red-300 font-mono" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Última Versão Disponível</label>
+                <input 
+                  type="text" 
+                  value={latestVersion} 
+                  onChange={e => setLatestVersion(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Link para Download da Nova Versão</label>
+                <input 
+                  type="url" 
+                  value={downloadUrl} 
+                  onChange={e => setDownloadUrl(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Mensagem de Bloqueio Exibida no Desktop</label>
+                <textarea 
+                  value={forceMsg} 
+                  onChange={e => setForceMsg(e.target.value)} 
+                  className="w-full h-20 bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-slate-100" 
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl">Cancelar</button>
+                <button type="submit" disabled={loading} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg">
+                  {loading ? 'Salvando...' : 'Salvar e Forçar Bloqueio'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // COMPONENTE: MODAL DE TROCA DE SENHA MESTRE
+    function ChangeMasterPasswordModal({ token, onClose, onSuccess }) {
+      const [curPass, setCurPass] = useState('');
+      const [newPass, setNewPass] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [err, setErr] = useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setErr('');
+        try {
+          const res = await fetch(`${API_BASE}/admin/change-password`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ currentPassword: curPass, newPassword: newPass })
+          });
+          const data = await res.json();
+          if (data.success) {
+            onSuccess();
+          } else {
+            setErr(data.error || 'Erro ao alterar senha.');
+          }
+        } catch (e) {
+          setErr('Falha ao conectar.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>🔒</span> Alterar Senha da Conta Mestre
+              </h3>
+              <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            {err && <div className="p-2.5 bg-red-950/40 border border-red-500/40 rounded-xl text-red-300 text-xs">{err}</div>}
+
+            <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Senha Atual</label>
+                <input 
+                  type="password" 
+                  value={curPass} 
+                  onChange={e => setCurPass(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nova Senha Mestre</label>
+                <input 
+                  type="password" 
+                  value={newPass} 
+                  onChange={e => setNewPass(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100" 
+                  required 
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl">Cancelar</button>
+                <button type="submit" disabled={loading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg">
+                  {loading ? 'Salvando...' : 'Atualizar Senha'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

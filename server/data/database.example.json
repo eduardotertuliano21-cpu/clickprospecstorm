@@ -1,0 +1,16 @@
+{
+  "admin": {
+    "id": "admin-master",
+    "email": "admin@clickleadstorm.com",
+    "passwordHash": "$2a$10$d7KrnJ4Gnq0qyUKdZHB/DulEJq3RatE1NpxDJ9CRLYRLpXAKlv4Pm",
+    "updatedAt": "2026-09-15T00:00:00.000Z"
+  },
+  "customers": [],
+  "versionConfig": {
+    "minVersionRequired": "1.0.0",
+    "latestVersion": "1.0.0",
+    "downloadUrl": "https://github.com/clickleadstorm/desktop/releases",
+    "forceUpdateMessage": "Esta versão foi descontinuada. É obrigatório atualizar para continuar.",
+    "updatedAt": "2026-09-15T00:00:00.000Z"
+  }
+}

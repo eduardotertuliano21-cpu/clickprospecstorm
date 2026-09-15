@@ -1,0 +1,46 @@
+{
+  "appId": "com.clickleadstorm.desktop",
+  "productName": "Click Lead Storm",
+  "copyright": "Copyright © 2026 Click Lead Storm",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "public/**/*",
+    "package.json"
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "**/node_modules/@whiskeysockets/**",
+    "**/node_modules/pino/**",
+    "**/node_modules/pino-std-serializers/**",
+    "**/node_modules/whatsapp-rust-bridge/**"
+  ],
+  "extraResources": [
+    {
+      "from": "public/vendor",
+      "to": "vendor",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "public/icons/icon.ico",
+    "sign": null,
+    "signAndEditExecutable": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Click Lead Storm"
+  }
+}

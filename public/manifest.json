@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "Click Lead Storm - B2B Prospect & WhatsApp CRM",
+  "version": "1.0.0",
+  "description": "Extensão B2B Prospect & CRM Local com IA para WhatsApp Web",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png",
+    "256": "icons/icon256.png"
+  },
+  "action": {
+    "default_title": "Abrir Click Lead Storm"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  },
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "tabs",
+    "scripting",
+    "alarms",
+    "declarativeNetRequest"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "host_permissions": [
+    "*://web.whatsapp.com/*",
+    "https://api.groq.com/*",
+    "https://brasilapi.com.br/*",
+    "https://minhareceita.org/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://web.whatsapp.com/*"],
+      "js": ["vendor/wppconnect-wa-js.js", "src/content/inpage.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://web.whatsapp.com/*"],
+      "js": ["src/content/bridge.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["vendor/wppconnect-wa-js.js"],
+      "matches": ["*://web.whatsapp.com/*"]
+    }
+  ]
+}

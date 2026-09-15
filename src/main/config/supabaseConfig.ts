@@ -7,7 +7,7 @@
  */
 export const SUPABASE_CONFIG = {
   url: process.env.SUPABASE_URL || 'https://ssbtgywzeezxocibajcx.supabase.co',
-  anonKey: process.env.SUPABASE_ANON_KEY || '',
+  anonKey: process.env.SUPABASE_ANON_KEY || 'sb_publishable_IYrTXeaGQCqaujq0dcyhag_OTea-_qQ',
   get isConfigured(): boolean {
     return !!(this.url && this.anonKey && this.url.startsWith('https://'));
   }

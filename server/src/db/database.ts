@@ -11,6 +11,16 @@ export interface AdminUser {
   updatedAt: string;
 }
 
+export interface RegisteredMachine {
+  machineId: string;
+  hostname?: string;
+  motherboardSerial?: string;
+  systemUuid?: string;
+  registeredAt: string;
+  lastSeenAt?: string;
+  notes?: string;
+}
+
 export interface CustomerLicense {
   id: string;
   customerName: string;
@@ -21,6 +31,8 @@ export interface CustomerLicense {
   status: 'active' | 'blocked' | 'expired';
   isTrial: boolean;
   dailyLimit: number;
+  maxMachines?: number;
+  allowedMachines?: RegisteredMachine[];
   machineId: string | null;
   currentAppVersion: string | null;
   expiresAt: string | null;

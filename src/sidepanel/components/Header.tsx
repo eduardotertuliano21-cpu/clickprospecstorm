@@ -8,7 +8,10 @@ import {
   X, 
   QrCode,
   Smartphone,
-  Terminal
+  Terminal,
+  Building2,
+  Monitor,
+  ShieldCheck
 } from 'lucide-react';
 import { campaignRepository } from '../../db/repositories/campaignRepository';
 import { settingsRepository } from '../../db/repositories/settingsRepository';
@@ -21,6 +24,7 @@ import { useAdminStore } from '../stores/useAdminStore';
 
 export const Header: React.FC = () => {
   const { isAdmin } = useAdminStore();
+  const [stationLicense, setStationLicense] = useState<any>(null);
   const [isWppReady, setIsWppReady] = useState<boolean>(false);
   const [checking, setChecking] = useState(false);
   const [sentToday, setSentToday] = useState(0);
@@ -76,6 +80,14 @@ export const Header: React.FC = () => {
     if (isElectron) {
       const electron = (window as any).electronAPI;
 
+      // Carrega dados de identificação da estação e licença
+      if (electron?.getLicenseInfo) {
+        electron.getLicenseInfo().then(setStationLicense).catch(() => {});
+      }
+      const unsubLic = electron?.onLicenseStatusChanged?.((data: any) => {
+        if (data) setStationLicense(data);
+      });
+
       // Listener de QR Code Base64
       const unsubQr = electron.onQrCode((qr: string) => {
         setQrCodeBase64(qr);
@@ -96,6 +108,7 @@ export const Header: React.FC = () => {
       });
 
       return () => {
+        unsubLic?.();
         unsubQr?.();
         unsubStatus?.();
       };
@@ -175,6 +188,24 @@ export const Header: React.FC = () => {
             <p className="text-[11px] text-slate-400">Prospect & CRM B2B Local com IA</p>
           </div>
         </div>
+
+        {/* Identificação da Estação e Cliente Conectado */}
+        {stationLicense && (
+          <div 
+            className="hidden lg:flex items-center gap-2 bg-slate-950/90 border border-slate-800/90 px-3 py-1.5 rounded-xl text-[11px] font-mono shadow-sm cursor-help"
+            title={`IDENTIFICAÇÃO DESTA ESTAÇÃO:\nEmpresa / Cliente: ${stationLicense.customerName || (stationLicense.isTrial ? 'Demonstração (Trial)' : 'Cliente Local')}\nComputador: ${stationLicense.hostname || 'DESKTOP-CLIENT'}\nID Hardware: ${stationLicense.machineId}\nStatus: ${stationLicense.status === 'active' ? 'Ativo / Licenciado' : stationLicense.status}`}
+          >
+            <div className="flex items-center gap-1.5 text-emerald-400 font-semibold truncate max-w-[170px]">
+              <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="truncate">{stationLicense.customerName || (stationLicense.isTrial ? 'Modo Demonstração' : 'Cliente Conectado')}</span>
+            </div>
+            <span className="text-slate-700 font-sans">|</span>
+            <div className="flex items-center gap-1 text-slate-300 truncate max-w-[130px]">
+              <Monitor className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="truncate text-slate-200">{stationLicense.hostname || 'PC-Local'}</span>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           {/* Contador Diário */}

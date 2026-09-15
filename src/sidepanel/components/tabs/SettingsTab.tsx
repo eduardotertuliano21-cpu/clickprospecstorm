@@ -19,6 +19,7 @@ import {
   Layers,
   Sparkles,
   Building2,
+  Monitor,
   Mail,
   MessageSquare,
   Radio,
@@ -57,6 +58,8 @@ const LinkedinIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' 
 export const SettingsTab: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [stationLicense, setStationLicense] = useState<any>(null);
+  const [copiedStationId, setCopiedStationId] = useState(false);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [cacheStats, setCacheStats] = useState<{ totalEntries: number; totalHits: number; tokensSaved: number }>({
     totalEntries: 0,
@@ -129,6 +132,11 @@ export const SettingsTab: React.FC = () => {
 
   useEffect(() => {
     settingsRepository.getSettings().then(setSettings);
+
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.getLicenseInfo) {
+      (window as any).electronAPI.getLicenseInfo().then(setStationLicense).catch(() => {});
+    }
+
     omnichannelService.getSettings().then((cs) => {
       setChannelSettings(cs);
       if (cs.instagram?.connected) {
@@ -383,6 +391,81 @@ export const SettingsTab: React.FC = () => {
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
+
+        {/* BLOCO DE IDENTIFICAÇÃO DA ESTAÇÃO & LICENCIAMENTO */}
+        {stationLicense && (
+          <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <div className="flex items-center gap-2.5 text-sm font-bold text-slate-100">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                <span>Identificação & Licenciamento Desta Estação</span>
+              </div>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                stationLicense.status === 'active'
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  : stationLicense.status === 'blocked'
+                  ? 'bg-red-500/15 text-red-300 border-red-500/30'
+                  : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+              }`}>
+                {stationLicense.status === 'active' ? '🟢 Licenciado / Ativo' : stationLicense.status === 'blocked' ? '🔴 Acesso Bloqueado' : '🟡 Período de Testes (Trial)'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 text-xs">
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+                <span className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">Cliente / Empresa Vinculada</span>
+                <div className="font-bold text-white flex items-center gap-1.5 truncate">
+                  <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="truncate">{stationLicense.customerName || (stationLicense.isTrial ? 'Demonstração Local' : 'Cliente Conectado')}</span>
+                </div>
+                {stationLicense.ownerEmail && (
+                  <div className="text-[10px] text-slate-400 mt-0.5 truncate">{stationLicense.ownerEmail}</div>
+                )}
+              </div>
+
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+                <span className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">Nome do Computador (Windows)</span>
+                <div className="font-bold text-blue-300 flex items-center gap-1.5 truncate">
+                  <Monitor className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span className="truncate">{stationLicense.hostname || 'DESKTOP-LOCAL'}</span>
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5">Estação de Trabalho</div>
+              </div>
+
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+                <span className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">Chave de Licença</span>
+                <div className="font-mono font-bold text-emerald-400 truncate select-all">
+                  {stationLicense.licenseKey || 'TRIAL (Demonstração)'}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5">
+                  Cota: {stationLicense.dailyLimit >= 99999 ? 'Ilimitado' : `${stationLicense.dailyLimit} envios/dia`}
+                </div>
+              </div>
+            </div>
+
+            {/* Hardware ID (Placa-Mãe / Machine ID) */}
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-[10px] uppercase font-semibold text-slate-400 block">Identificador Único de Hardware (ID da Placa-Mãe)</span>
+                <span className="font-mono text-xs text-slate-200 select-all break-all">{stationLicense.machineId}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const payload = `📋 IDENTIFICAÇÃO DESTA ESTAÇÃO - CLICK LEAD STORM\nEmpresa: ${stationLicense.customerName || 'Cliente'}\nComputador: ${stationLicense.hostname || 'PC'}\nID Hardware (Placa-Mãe): ${stationLicense.machineId}\nChave: ${stationLicense.licenseKey || 'Trial'}`;
+                  navigator.clipboard.writeText(payload);
+                  setCopiedStationId(true);
+                  setTimeout(() => setCopiedStationId(false), 2500);
+                }}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold shrink-0 transition flex items-center gap-1.5 self-start sm:self-center"
+              >
+                {copiedStationId ? '✅ Copiado para Suporte!' : '📋 Copiar Dados da Estação'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* BLOCO 1: CONTEXTO DA MINHA EMPRESA */}
         <div className="bg-slate-900/70 p-5 rounded-2xl border border-slate-800 space-y-4">

@@ -17,6 +17,8 @@ create table if not exists public.licenses (
   status text not null default 'active' check (status in ('active', 'blocked', 'trial', 'expired')),
   is_trial boolean default false,
   daily_limit integer default 100,
+  max_machines integer default 1,
+  allowed_machines jsonb default '[]'::jsonb,
   expires_at timestamp with time zone not null,
   notes text
 );
@@ -109,7 +111,8 @@ on conflict (license_key) do update set
 create or replace function public.validate_license(
   p_license_key text,
   p_machine_id text,
-  p_app_version text
+  p_app_version text,
+  p_hostname text default ''
 )
 returns json
 language plpgsql
@@ -118,6 +121,8 @@ as $$
 declare
   v_lic record;
   v_cfg record;
+  v_exists boolean;
+  v_count integer;
 begin
   -- Consulta versão mínima exigida
   select * into v_cfg from public.app_config where id = 1;
@@ -140,7 +145,8 @@ begin
       'is_trial', false,
       'daily_limit', 999999,
       'expires_at', '2099-12-31T23:59:59Z',
-      'customer_name', 'Eduardo Tertuliano (Master Admin)'
+      'customer_name', 'Eduardo Tertuliano (Master Admin)',
+      'max_machines', 999
     );
   end if;
 
@@ -160,7 +166,9 @@ begin
     return json_build_object(
       'valid', false,
       'force_update', false,
-      'message', 'Seu acesso foi suspenso pelo suporte administrativo.'
+      'status', 'blocked',
+      'customer_name', v_lic.customer_name,
+      'message', coalesce(v_lic.notes, 'Seu acesso foi suspenso pelo suporte administrativo.')
     );
   end if;
 
@@ -169,19 +177,61 @@ begin
     return json_build_object(
       'valid', false,
       'force_update', false,
+      'status', 'expired',
+      'customer_name', v_lic.customer_name,
       'message', 'Sua licença ou período de testes expirou.'
     );
   end if;
 
-  -- Amarração ou verificação de Hardware ID
-  if v_lic.machine_id is null or v_lic.machine_id = '' then
-    update public.licenses set machine_id = p_machine_id where id = v_lic.id;
-  elsif v_lic.machine_id <> p_machine_id then
-    return json_build_object(
-      'valid', false,
-      'force_update', false,
-      'message', 'Esta licença já está ativa em outro computador. Solicite o reset ao suporte.'
-    );
+  -- Gerenciamento de Múltiplas Máquinas (allowed_machines)
+  select exists (
+    select 1 from jsonb_array_elements(v_lic.allowed_machines) elem 
+    where elem->>'machine_id' = p_machine_id
+  ) into v_exists;
+
+  if not v_exists and (v_lic.machine_id = p_machine_id) then
+    v_exists := true;
+  end if;
+
+  if v_exists then
+    update public.licenses 
+    set allowed_machines = (
+      select jsonb_agg(
+        case 
+          when elem->>'machine_id' = p_machine_id then 
+            jsonb_build_object(
+              'machine_id', p_machine_id, 
+              'hostname', coalesce(nullif(p_hostname, ''), elem->>'hostname', 'Estação'), 
+              'last_seen', now()
+            )
+          else elem 
+        end
+      )
+      from jsonb_array_elements(v_lic.allowed_machines) elem
+    )
+    where id = v_lic.id;
+  else
+    select coalesce(jsonb_array_length(v_lic.allowed_machines), 0) into v_count;
+    if v_count < coalesce(v_lic.max_machines, 1) then
+      update public.licenses 
+      set 
+        machine_id = coalesce(machine_id, p_machine_id),
+        allowed_machines = v_lic.allowed_machines || jsonb_build_object(
+          'machine_id', p_machine_id, 
+          'hostname', coalesce(nullif(p_hostname, ''), 'Estação'), 
+          'registered_at', now(),
+          'last_seen', now()
+        )
+      where id = v_lic.id;
+    else
+      return json_build_object(
+        'valid', false,
+        'force_update', false,
+        'status', 'hardware_mismatch',
+        'customer_name', v_lic.customer_name,
+        'message', format('Limite de computadores atingido (%s/%s máquinas). Solicite ao administrador para autorizar este ID de placa-mãe.', v_count, v_lic.max_machines)
+      );
+    end if;
   end if;
 
   -- Retorno de Sucesso
@@ -192,7 +242,9 @@ begin
     'is_trial', v_lic.is_trial,
     'daily_limit', v_lic.daily_limit,
     'expires_at', v_lic.expires_at,
-    'customer_name', v_lic.customer_name
+    'customer_name', v_lic.customer_name,
+    'customer_email', v_lic.customer_email,
+    'max_machines', v_lic.max_machines
   );
 end;
 $$;

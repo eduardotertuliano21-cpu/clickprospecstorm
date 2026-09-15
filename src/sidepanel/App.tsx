@@ -31,6 +31,8 @@ export const App: React.FC = () => {
   const [forceUpdateInfo, setForceUpdateInfo] = useState<ForceUpdateInfo | null>(null);
   const [licenseData, setLicenseData] = useState<{
     machineId: string;
+    hostname?: string;
+    customerName?: string;
     status: 'active' | 'trial' | 'blocked' | 'expired';
     isTrial: boolean;
     dailyLimit?: number;
@@ -130,6 +132,8 @@ export const App: React.FC = () => {
       {isLocked && licenseData && (
         <LockScreen 
           machineId={licenseData.machineId}
+          hostname={licenseData.hostname}
+          customerName={licenseData.customerName}
           status={licenseData.status as any}
           message={licenseData.message}
           onKeyActivated={fetchLicense}

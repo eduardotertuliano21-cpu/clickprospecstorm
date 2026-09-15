@@ -63,6 +63,7 @@
       const [showCreateModal, setShowCreateModal] = useState(false);
       const [showVersionModal, setShowVersionModal] = useState(false);
       const [showChangePassModal, setShowChangePassModal] = useState(false);
+      const [selectedCustomerForMachines, setSelectedCustomerForMachines] = useState(null);
       const [createdLicenseInfo, setCreatedLicenseInfo] = useState(null);
       const [tempPassResult, setTempPassResult] = useState(null);
       const [toastMsg, setToastMsg] = useState('');
@@ -472,10 +473,29 @@
                             </td>
 
                             <td className="py-3 px-4">
-                              {c.machineId ? (
-                                <span className="font-mono text-[10px] text-slate-300 bg-slate-950 px-2 py-0.5 rounded border border-slate-800" title={c.machineId}>
-                                  {c.machineId.substring(0, 16)}...
-                                </span>
+                              {c.allowedMachines && c.allowedMachines.length > 0 ? (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-semibold text-emerald-400 text-[11px]">
+                                      🖥️ {c.allowedMachines.length}/{c.maxMachines || 1} Máquina(s)
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-300 font-mono bg-slate-950 px-2 py-1 rounded border border-slate-800 space-y-0.5 max-w-[200px]">
+                                    {c.allowedMachines.map((m, mIdx) => (
+                                      <div key={mIdx} className="flex items-center justify-between gap-1 truncate" title={`ID: ${m.machineId}\nÚltimo acesso: ${m.lastSeenAt ? new Date(m.lastSeenAt).toLocaleString('pt-BR') : 'N/A'}`}>
+                                        <span className="text-slate-200 font-bold truncate">{m.hostname || 'Estação'}</span>
+                                        <span className="text-slate-500 text-[9px] shrink-0">{m.machineId.substring(0, 8)}...</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : c.machineId ? (
+                                <div className="space-y-0.5">
+                                  <span className="font-semibold text-slate-300 text-[11px]">1/{c.maxMachines || 1} Máquina</span>
+                                  <div className="font-mono text-[10px] text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800" title={c.machineId}>
+                                    {c.machineId.substring(0, 16)}...
+                                  </div>
+                                </div>
                               ) : (
                                 <span className="text-[11px] text-amber-400/80 italic">Aguardando 1º uso</span>
                               )}
@@ -527,6 +547,14 @@
                                   title={isBlocked ? 'Reativar cliente' : 'Bloquear cliente'}
                                 >
                                   {isBlocked ? 'Desbloquear' : 'Bloquear'}
+                                </button>
+
+                                <button
+                                  onClick={() => setSelectedCustomerForMachines(c)}
+                                  className="px-2 py-1 rounded text-[11px] bg-blue-950/40 hover:bg-blue-900/60 text-blue-300 border border-blue-500/40 transition flex items-center gap-1 font-semibold"
+                                  title="Gerenciar slots e adicionar outros IDs de placa-mãe"
+                                >
+                                  🖥️ Máquinas
                                 </button>
 
                                 <button
@@ -687,6 +715,18 @@
               onSuccess={() => {
                 setShowChangePassModal(false);
                 showToast('Senha mestre alterada com sucesso!');
+              }}
+            />
+          )}
+
+          {/* MODAL 6: GERENCIAMENTO DE MÚLTIPLAS MÁQUINAS (SLOTS DE PLACA-MÃE) */}
+          {selectedCustomerForMachines && (
+            <ManageMachinesModal
+              customer={selectedCustomerForMachines}
+              token={token}
+              onClose={() => setSelectedCustomerForMachines(null)}
+              onUpdated={() => {
+                fetchDashboardData();
               }}
             />
           )}
@@ -1057,6 +1097,217 @@
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      );
+    }
+
+    // COMPONENTE: MODAL DE GERENCIAMENTO DE MÚLTIPLAS MÁQUINAS (SLOTS DE HARDWARE)
+    function ManageMachinesModal({ customer, token, onClose, onUpdated }) {
+      const [machines, setMachines] = useState(customer.allowedMachines || (customer.machineId ? [{ machineId: customer.machineId, hostname: 'Principal', registeredAt: customer.createdAt }] : []));
+      const [maxMachines, setMaxMachines] = useState(customer.maxMachines || 1);
+      const [newMachineId, setNewMachineId] = useState('');
+      const [newHostname, setNewHostname] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [msg, setMsg] = useState('');
+
+      const handleAddMachine = async (e) => {
+        e.preventDefault();
+        if (!newMachineId.trim()) return;
+        setLoading(true);
+        setMsg('');
+        try {
+          const res = await fetch(`${API_BASE}/admin/customers/${customer.id}/machines`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ machineId: newMachineId.trim(), hostname: newHostname.trim() || 'Estação' })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setMachines(data.data.allowedMachines);
+            setMaxMachines(data.data.maxMachines);
+            setNewMachineId('');
+            setNewHostname('');
+            setMsg('✅ Máquina / ID de placa-mãe adicionada com sucesso!');
+            onUpdated();
+          } else {
+            setMsg(`❌ ${data.error || 'Erro ao adicionar máquina'}`);
+          }
+        } catch (e) {
+          setMsg('❌ Erro na requisição');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleRemoveMachine = async (mId) => {
+        if (!confirm('Deseja desvincular esta máquina da licença?')) return;
+        setLoading(true);
+        setMsg('');
+        try {
+          const res = await fetch(`${API_BASE}/admin/customers/${customer.id}/machines/${mId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            setMachines(data.data.allowedMachines || []);
+            setMsg('✅ Máquina removida com sucesso!');
+            onUpdated();
+          } else {
+            setMsg(`❌ ${data.error || 'Erro ao remover máquina'}`);
+          }
+        } catch (e) {
+          setMsg('❌ Erro na requisição');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleUpdateSlots = async (newLimit) => {
+        try {
+          const res = await fetch(`${API_BASE}/admin/customers/${customer.id}/max-machines`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ maxMachines: newLimit })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setMaxMachines(newLimit);
+            setMsg(`✅ Limite de computadores alterado para ${newLimit}!`);
+            onUpdated();
+          }
+        } catch (e) {}
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>🖥️</span> Gerenciamento de Máquinas & Slots
+                </h3>
+                <p className="text-xs text-slate-400">Cliente: <strong>{customer.customerName}</strong> ({customer.licenseKey})</p>
+              </div>
+              <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            {msg && <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200">{msg}</div>}
+
+            {/* Configuração de Slots */}
+            <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-semibold text-slate-200">Limite de Computadores Autorizados (Slots)</span>
+                <p className="text-[11px] text-slate-500">Quantos PCs podem usar esta licença simultaneamente</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={maxMachines}
+                  onChange={e => handleUpdateSlots(parseInt(e.target.value, 10))}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-emerald-400 font-bold"
+                >
+                  <option value={1}>1 Computador</option>
+                  <option value={2}>2 Computadores</option>
+                  <option value={3}>3 Computadores</option>
+                  <option value={5}>5 Computadores</option>
+                  <option value={10}>10 Computadores</option>
+                  <option value={50}>50 Computadores</option>
+                  <option value={999}>Ilimitados</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Lista de Máquinas Cadastradas */}
+            <div className="space-y-2">
+              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider block">
+                Máquinas Conectadas ({machines.length}/{maxMachines})
+              </span>
+              <div className="max-h-44 overflow-y-auto custom-scroll space-y-2">
+                {machines.length === 0 ? (
+                  <div className="text-center py-4 text-xs text-slate-500 bg-slate-950/50 rounded-xl border border-slate-800/80">
+                    Nenhuma máquina conectada ainda. O primeiro PC que abrir vinculará automaticamente, ou adicione abaixo.
+                  </div>
+                ) : (
+                  machines.map((m, idx) => (
+                    <div key={idx} className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3 text-xs">
+                      <div>
+                        <div className="font-bold text-white flex items-center gap-1.5">
+                          <span>💻</span> {m.hostname || 'Estação Sem Nome'}
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-400 select-all" title="ID da Placa-Mãe / Machine ID">
+                          ID: {m.machineId}
+                        </div>
+                        {m.lastSeenAt && (
+                          <div className="text-[10px] text-slate-500">
+                            Último acesso: {new Date(m.lastSeenAt).toLocaleString('pt-BR')}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMachine(m.machineId)}
+                        className="px-2.5 py-1 bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-500/40 rounded-lg text-[11px] transition"
+                        title="Desvincular esta máquina"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Formulário para Adicionar Manualmente */}
+            <form onSubmit={handleAddMachine} className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 space-y-3">
+              <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                <span>➕</span> Autorizar Nova Máquina / Outro ID de Placa-Mãe
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">ID da Placa-Mãe / Hardware ID *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Cole o ID (32 caracteres)"
+                    value={newMachineId}
+                    onChange={e => setNewMachineId(e.target.value.trim())}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Nome do Computador / Estação</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Recepção, Notebook 02"
+                    value={newHostname}
+                    onChange={e => setNewHostname(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  disabled={loading || !newMachineId.trim()}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition shadow-md"
+                >
+                  {loading ? 'Adicionando...' : 'Adicionar Máquina'}
+                </button>
+              </div>
+            </form>
+
+            <div className="flex justify-end pt-1">
+              <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       );

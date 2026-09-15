@@ -9,6 +9,8 @@ export interface SupabaseRpcResponse {
   daily_limit?: number;
   expires_at?: string;
   customer_name?: string;
+  customer_email?: string;
+  max_machines?: number;
   message?: string;
 }
 
@@ -19,6 +21,7 @@ export class SupabaseLicenseClient {
   public static async validateLicense(params: {
     licenseKey: string;
     machineId: string;
+    hostname?: string;
     appVersion: string;
   }): Promise<SupabaseRpcResponse> {
     if (!SUPABASE_CONFIG.isConfigured) {
@@ -39,6 +42,7 @@ export class SupabaseLicenseClient {
       body: JSON.stringify({
         p_license_key: params.licenseKey,
         p_machine_id: params.machineId,
+        p_hostname: params.hostname || '',
         p_app_version: params.appVersion
       })
     });

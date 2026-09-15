@@ -1,6 +1,10 @@
-import { autoUpdater } from 'electron-updater';
+import { createRequire } from 'module';
 import { app, BrowserWindow } from 'electron';
 import { loggerService } from '../loggerService.js';
+
+const require = createRequire(import.meta.url);
+const electronUpdater = require('electron-updater');
+const autoUpdater = electronUpdater.autoUpdater || electronUpdater.default?.autoUpdater || electronUpdater;
 
 export interface UpdateProgressInfo {
   percent: number;
@@ -36,7 +40,7 @@ class AutoUpdateService {
       this.sendToRenderer('updater:checking');
     });
 
-    autoUpdater.on('update-available', (info) => {
+    autoUpdater.on('update-available', (info: any) => {
       loggerService.info('AUTO_UPDATE', `Nova versão encontrada: v${info.version}. Iniciando download em segundo plano...`);
       this.sendToRenderer('updater:available', {
         version: info.version,
@@ -45,17 +49,17 @@ class AutoUpdateService {
       });
     });
 
-    autoUpdater.on('update-not-available', (info) => {
+    autoUpdater.on('update-not-available', (info: any) => {
       loggerService.info('AUTO_UPDATE', `Sistema está atualizado na versão mais recente (v${info.version}).`);
       this.sendToRenderer('updater:not-available', { version: info.version });
     });
 
-    autoUpdater.on('error', (err) => {
+    autoUpdater.on('error', (err: any) => {
       loggerService.warn('AUTO_UPDATE', `Erro ao verificar/baixar atualização: ${err?.message || err}`);
       this.sendToRenderer('updater:error', { message: err?.message || 'Erro no auto-update' });
     });
 
-    autoUpdater.on('download-progress', (progressObj) => {
+    autoUpdater.on('download-progress', (progressObj: any) => {
       const percent = Math.round(progressObj.percent || 0);
       loggerService.info('AUTO_UPDATE', `Download do update: ${percent}% (${Math.round(progressObj.transferred / 1024 / 1024)}MB / ${Math.round(progressObj.total / 1024 / 1024)}MB)`);
       this.sendToRenderer('updater:download-progress', {
@@ -66,7 +70,7 @@ class AutoUpdateService {
       });
     });
 
-    autoUpdater.on('update-downloaded', (info) => {
+    autoUpdater.on('update-downloaded', (info: any) => {
       this.isUpdateDownloaded = true;
       loggerService.info('AUTO_UPDATE', `Atualização v${info.version} baixada com sucesso e pronta para instalação!`);
       this.sendToRenderer('updater:downloaded', { version: info.version });

@@ -4,12 +4,14 @@ import { MasterLoginModal } from './MasterLoginModal';
 
 interface LockScreenProps {
   machineId: string;
+  hostname?: string;
+  customerName?: string;
   status: 'blocked' | 'expired';
   message?: string;
   onKeyActivated: () => void;
 }
 
-export const LockScreen: React.FC<LockScreenProps> = ({ machineId, status, message, onKeyActivated }) => {
+export const LockScreen: React.FC<LockScreenProps> = ({ machineId, hostname, customerName, status, message, onKeyActivated }) => {
   const [licenseKey, setLicenseKey] = useState('');
   const [copied, setCopied] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -99,20 +101,34 @@ export const LockScreen: React.FC<LockScreenProps> = ({ machineId, status, messa
           {message || 'Sua licença precisa ser ativada ou regularizada para continuar utilizando os módulos de prospecção e IA.'}
         </p>
 
-        {/* Card do Machine ID */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 mb-6 text-left">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Identificador de Hardware (Machine ID)</span>
-            <button
-              onClick={handleCopyMachineId}
-              className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium transition-colors"
-            >
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copiado!' : 'Copiar ID'}</span>
-            </button>
-          </div>
-          <div className="font-mono text-xs text-slate-200 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800/80 break-all select-all">
-            {machineId}
+        {/* Card do Machine ID & Identificação */}
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 mb-6 text-left space-y-2">
+          {customerName && (
+            <div className="text-[11px] text-slate-300 flex items-center justify-between pb-1.5 border-b border-slate-900">
+              <span className="text-slate-500 font-semibold uppercase text-[9px]">Cliente Vinculado:</span>
+              <span className="font-bold text-emerald-400">{customerName}</span>
+            </div>
+          )}
+          {hostname && (
+            <div className="text-[11px] text-slate-300 flex items-center justify-between pb-1.5 border-b border-slate-900">
+              <span className="text-slate-500 font-semibold uppercase text-[9px]">Estação / Computador:</span>
+              <span className="font-bold text-blue-300">{hostname}</span>
+            </div>
+          )}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">ID da Placa-Mãe (Machine ID)</span>
+              <button
+                onClick={handleCopyMachineId}
+                className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium transition-colors"
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied ? 'Copiado!' : 'Copiar ID'}</span>
+              </button>
+            </div>
+            <div className="font-mono text-xs text-slate-200 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800/80 break-all select-all">
+              {machineId}
+            </div>
           </div>
         </div>
 

@@ -3,17 +3,22 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
+import cp from 'child_process';
 import { loggerService } from './loggerService.js';
 import { SUPABASE_CONFIG } from './config/supabaseConfig.js';
 import { SupabaseLicenseClient } from './services/supabaseLicenseClient.js';
 
 export interface LicenseData {
   machineId: string;
+  hostname?: string;
+  motherboardSerial?: string;
+  systemUuid?: string;
   licenseKey: string;
-  status: 'active' | 'trial' | 'blocked' | 'expired';
+  status: 'active' | 'trial' | 'blocked' | 'expired' | 'hardware_mismatch';
   isTrial: boolean;
   dailyLimit: number; // 20 para trial, 99999 para ativo
   expiresAt: string | null;
+  customerName?: string;
   ownerEmail?: string;
   lastCheckedAt: string;
   message?: string;
@@ -47,35 +52,71 @@ class LicenseService {
     this.mainWindow = win;
   }
 
-  public getMachineId(): string {
-    try {
-      const nics = os.networkInterfaces();
-      const macs = Object.values(nics)
-        .flat()
-        .filter((n): n is os.NetworkInterfaceInfo => !!n && !n.internal && !!n.mac && n.mac !== '00:00:00:00:00:00')
-        .map(n => n.mac)
-        .sort()
-        .join(';');
-      const raw = [os.hostname(), os.platform(), os.arch(), os.cpus()[0]?.model || '', macs].join('|');
-      return crypto.createHash('sha256').update(raw).digest('hex').substring(0, 32);
-    } catch {
-      const fallbackRaw = `${os.hostname()}-${os.platform()}-${os.arch()}`;
-      return crypto.createHash('sha256').update(fallbackRaw).digest('hex').substring(0, 32);
+  public getHardwareInfo(): { machineId: string; hostname: string; systemUuid: string; motherboardSerial: string } {
+    let bb = '';
+    let uuid = '';
+    let bios = '';
+
+    if (process.platform === 'win32') {
+      try {
+        try {
+          uuid = cp.execSync('wmic csproduct get uuid', { encoding: 'utf8', timeout: 3000 })
+            .replace(/UUID/i, '').trim();
+        } catch {}
+        try {
+          bb = cp.execSync('wmic baseboard get serialnumber', { encoding: 'utf8', timeout: 3000 })
+            .replace(/SerialNumber/i, '').trim();
+        } catch {}
+        try {
+          bios = cp.execSync('wmic bios get serialnumber', { encoding: 'utf8', timeout: 3000 })
+            .replace(/SerialNumber/i, '').trim();
+        } catch {}
+      } catch (err) {
+        console.warn('[LicenseService] Falha ao coletar WMI de hardware:', err);
+      }
     }
+
+    const hostname = os.hostname() || 'DESKTOP-CLIENT';
+    const cleanUuid = (uuid && uuid !== 'None') ? uuid : '';
+    const cleanBb = (bb && bb !== 'None') ? bb : '';
+    const cleanBios = (bios && bios !== 'None') ? bios : '';
+
+    const hardwareSeed = `${cleanUuid}|${cleanBb}|${cleanBios}`.trim();
+    const fallbackSeed = hardwareSeed.length > 5 ? hardwareSeed : `${hostname}|${os.platform()}|${os.arch()}|${os.cpus()[0]?.model || ''}`;
+    const machineId = crypto.createHash('sha256').update(fallbackSeed).digest('hex').substring(0, 32);
+
+    return {
+      machineId,
+      hostname,
+      systemUuid: cleanUuid || cleanBb || machineId,
+      motherboardSerial: cleanBb || cleanBios || 'N/A'
+    };
+  }
+
+  public getMachineId(): string {
+    return this.getHardwareInfo().machineId;
   }
 
   public getLicenseInfo(): LicenseData {
     if (this.currentLicense) return this.currentLicense;
 
-    const mId = this.getMachineId();
+    const hw = this.getHardwareInfo();
+    const mId = hw.machineId;
     const licenseFilePath = this.getLicensePath();
 
     if (fs.existsSync(licenseFilePath)) {
       try {
         const raw = fs.readFileSync(licenseFilePath, 'utf8');
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.machineId === mId) {
-          this.currentLicense = parsed;
+        if (parsed) {
+          // Atualiza dados de hardware em tempo de execução
+          this.currentLicense = {
+            ...parsed,
+            machineId: mId,
+            hostname: hw.hostname,
+            systemUuid: hw.systemUuid,
+            motherboardSerial: hw.motherboardSerial
+          };
           return this.currentLicense!;
         }
       } catch (err) {
@@ -87,6 +128,9 @@ class LicenseService {
     const trialExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     this.currentLicense = {
       machineId: mId,
+      hostname: hw.hostname,
+      systemUuid: hw.systemUuid,
+      motherboardSerial: hw.motherboardSerial,
       licenseKey: '',
       status: 'trial',
       isTrial: true,
@@ -106,10 +150,12 @@ class LicenseService {
 
   public async verifyLicenseKey(key: string): Promise<LicenseData> {
     const cleanKey = (key || '').trim().toUpperCase();
-    const mId = this.getMachineId();
+    const hw = this.getHardwareInfo();
+    const mId = hw.machineId;
+    const hostname = hw.hostname;
     const appVersion = app?.getVersion() || '1.0.0';
 
-    loggerService.info('LICENSE', `Validando chave de ativação: ${cleanKey.substring(0, 8)}... para máquina ${mId.substring(0, 8)}`);
+    loggerService.info('LICENSE', `Validando chave de ativação: ${cleanKey.substring(0, 8)}... para máquina ${mId.substring(0, 8)} (${hostname})`);
 
     // 0. Se o Supabase estiver configurado, valida diretamente via RPC na nuvem
     if (SUPABASE_CONFIG.isConfigured) {
@@ -117,6 +163,7 @@ class LicenseService {
         const supaRes = await SupabaseLicenseClient.validateLicense({
           licenseKey: cleanKey,
           machineId: mId,
+          hostname,
           appVersion
         });
 
@@ -133,12 +180,16 @@ class LicenseService {
         if (supaRes.valid) {
           this.currentLicense = {
             machineId: mId,
+            hostname,
+            systemUuid: hw.systemUuid,
+            motherboardSerial: hw.motherboardSerial,
             licenseKey: cleanKey,
             status: supaRes.status || 'active',
             isTrial: !!supaRes.is_trial,
             dailyLimit: supaRes.daily_limit || (supaRes.is_trial ? 20 : 99999),
             expiresAt: supaRes.expires_at || null,
-            ownerEmail: supaRes.customer_name,
+            customerName: supaRes.customer_name,
+            ownerEmail: supaRes.customer_email || supaRes.customer_name,
             lastCheckedAt: new Date().toISOString(),
             message: `Licença ${supaRes.is_trial ? 'Trial' : 'Comercial'} autenticada com sucesso via Supabase Cloud!`
           };
@@ -162,7 +213,7 @@ class LicenseService {
       const res = await fetch(`${serverUrl}/api/v1/license/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ licenseKey: cleanKey, machineId: mId, appVersion })
+        body: JSON.stringify({ licenseKey: cleanKey, machineId: mId, hostname, appVersion })
       });
 
       const body: any = await res.json();
@@ -180,11 +231,15 @@ class LicenseService {
       if (res.ok && body.valid && body.license) {
         this.currentLicense = {
           machineId: mId,
+          hostname,
+          systemUuid: hw.systemUuid,
+          motherboardSerial: hw.motherboardSerial,
           licenseKey: body.license.licenseKey || cleanKey,
           status: body.license.status || 'active',
           isTrial: !!body.license.isTrial,
           dailyLimit: body.license.dailyLimit || (body.license.isTrial ? 20 : 99999),
           expiresAt: body.license.expiresAt,
+          customerName: body.license.customerName,
           ownerEmail: body.license.customerEmail,
           lastCheckedAt: new Date().toISOString(),
           message: `Licença ${body.license.isTrial ? 'Trial' : 'Comercial'} autenticada com sucesso pelo Servidor Central!`
@@ -260,12 +315,16 @@ class LicenseService {
     const lic = this.getLicenseInfo();
     const appVersion = app?.getVersion() || '1.0.0';
 
+    const hw = this.getHardwareInfo();
+    const hostname = lic.hostname || hw.hostname;
+
     // 0. Checagem periódica no Supabase Cloud
     if (SUPABASE_CONFIG.isConfigured && lic.licenseKey) {
       try {
         const supaRes = await SupabaseLicenseClient.validateLicense({
           licenseKey: lic.licenseKey,
           machineId: lic.machineId,
+          hostname,
           appVersion
         });
 
@@ -285,6 +344,8 @@ class LicenseService {
           lic.isTrial = !!supaRes.is_trial;
           lic.dailyLimit = supaRes.daily_limit || (supaRes.is_trial ? 20 : 99999);
           lic.expiresAt = supaRes.expires_at || null;
+          lic.customerName = supaRes.customer_name || lic.customerName;
+          lic.ownerEmail = supaRes.customer_email || lic.ownerEmail;
           lic.lastCheckedAt = new Date().toISOString();
           this.saveLicense(lic);
           this.notifyRenderer();
@@ -306,7 +367,7 @@ class LicenseService {
       const res = await fetch(`${serverUrl}/api/v1/license/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ licenseKey: lic.licenseKey, machineId: lic.machineId, appVersion })
+        body: JSON.stringify({ licenseKey: lic.licenseKey, machineId: lic.machineId, hostname, appVersion })
       });
 
       const body: any = await res.json();
@@ -337,7 +398,8 @@ class LicenseService {
         lic.status = body.license.status || 'active';
         lic.isTrial = !!body.license.isTrial;
         lic.dailyLimit = body.license.dailyLimit;
-        lic.expiresAt = body.license.expiresAt;
+        lic.customerName = body.license.customerName || lic.customerName;
+        lic.ownerEmail = body.license.customerEmail || lic.ownerEmail;
         lic.lastCheckedAt = new Date().toISOString();
         this.saveLicense(lic);
         this.notifyRenderer();

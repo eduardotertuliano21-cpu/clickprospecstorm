@@ -379,3 +379,133 @@ adminRouter.delete('/customers/:id', (req: AuthRequest, res: Response): void => 
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+/**
+ * 10. POST /api/v1/admin/customers/:id/machines
+ * Adiciona um ID de placa-mãe/máquina manualmente ao cliente.
+ */
+adminRouter.post('/customers/:id/machines', (req: AuthRequest, res: Response): void => {
+  try {
+    const { id } = req.params;
+    const { machineId, hostname, notes } = req.body;
+
+    if (!machineId || !machineId.trim()) {
+      res.status(400).json({ success: false, error: 'O ID da placa-mãe/máquina é obrigatório.' });
+      return;
+    }
+
+    const customer = db.findCustomerById(id);
+    if (!customer) {
+      res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
+      return;
+    }
+
+    const cleanMid = machineId.trim();
+    if (!customer.allowedMachines) {
+      customer.allowedMachines = customer.machineId 
+        ? [{ machineId: customer.machineId, hostname: 'Principal', registeredAt: customer.createdAt, lastSeenAt: new Date().toISOString() }] 
+        : [];
+    }
+
+    const exists = customer.allowedMachines.find(m => m.machineId === cleanMid);
+
+    if (!exists) {
+      customer.allowedMachines.push({
+        machineId: cleanMid,
+        hostname: hostname?.trim() || 'Estação Manual',
+        registeredAt: new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+        notes: notes?.trim()
+      });
+      if (!customer.machineId) customer.machineId = cleanMid;
+    } else {
+      if (hostname) exists.hostname = hostname.trim();
+      if (notes) exists.notes = notes.trim();
+    }
+
+    if (customer.allowedMachines.length > (customer.maxMachines || 1)) {
+      customer.maxMachines = customer.allowedMachines.length;
+    }
+
+    const updated = db.updateCustomer(id, {
+      allowedMachines: customer.allowedMachines,
+      maxMachines: customer.maxMachines,
+      machineId: customer.machineId
+    });
+
+    res.json({
+      success: true,
+      message: `Máquina ${hostname || cleanMid.substring(0, 10)} cadastrada com sucesso!`,
+      data: updated
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 11. DELETE /api/v1/admin/customers/:id/machines/:machineId
+ * Remove uma máquina cadastrada.
+ */
+adminRouter.delete('/customers/:id/machines/:machineId', (req: AuthRequest, res: Response): void => {
+  try {
+    const { id, machineId } = req.params;
+    const customer = db.findCustomerById(id);
+    if (!customer) {
+      res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
+      return;
+    }
+
+    if (customer.allowedMachines) {
+      customer.allowedMachines = customer.allowedMachines.filter(m => m.machineId !== machineId);
+    }
+    if (customer.machineId === machineId) {
+      customer.machineId = customer.allowedMachines?.[0]?.machineId || null;
+    }
+
+    const updated = db.updateCustomer(id, {
+      allowedMachines: customer.allowedMachines,
+      machineId: customer.machineId
+    });
+
+    res.json({
+      success: true,
+      message: 'Máquina desvinculada com sucesso.',
+      data: updated
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 12. PATCH /api/v1/admin/customers/:id/max-machines
+ * Atualiza o limite de máquinas autorizadas.
+ */
+adminRouter.patch('/customers/:id/max-machines', (req: AuthRequest, res: Response): void => {
+  try {
+    const { id } = req.params;
+    const { maxMachines } = req.body;
+    const limit = parseInt(maxMachines, 10);
+
+    if (isNaN(limit) || limit < 1) {
+      res.status(400).json({ success: false, error: 'Informe uma quantidade válida (no mínimo 1 máquina).' });
+      return;
+    }
+
+    const customer = db.findCustomerById(id);
+    if (!customer) {
+      res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
+      return;
+    }
+
+    const updated = db.updateCustomer(id, { maxMachines: limit });
+    res.json({
+      success: true,
+      message: `Limite de computadores atualizado para ${limit} máquina(s).`,
+      data: updated
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});

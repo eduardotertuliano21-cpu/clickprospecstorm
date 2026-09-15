@@ -50,7 +50,7 @@ licenseRouter.get('/verify', (req: Request, res: Response) => {
  */
 licenseRouter.post('/verify', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { licenseKey, machineId, appVersion = '1.0.0' } = req.body;
+    const { licenseKey, machineId, hostname, appVersion = '1.0.0' } = req.body;
 
     if (!machineId) {
       res.status(400).json({ valid: false, message: 'Identificador de hardware (machineId) ausente.' });
@@ -94,7 +94,10 @@ licenseRouter.post('/verify', async (req: Request, res: Response): Promise<void>
     // 3. Se nenhuma chave foi fornecida, verifica se a máquina já tem alguma licença vinculada
     if (!customer && !cleanKey) {
       const all = db.getAllCustomers();
-      customer = all.find(c => c.machineId === machineId);
+      customer = all.find(c => 
+        c.machineId === machineId || 
+        (c.allowedMachines && c.allowedMachines.some(m => m.machineId === machineId))
+      );
     }
 
     // 4. Auto-provisionamento de Trial para nova instalação sem chave
@@ -109,6 +112,13 @@ licenseRouter.post('/verify', async (req: Request, res: Response): Promise<void>
         status: 'active',
         isTrial: true,
         dailyLimit: 20,
+        maxMachines: 1,
+        allowedMachines: [{
+          machineId,
+          hostname: hostname || 'Estação',
+          registeredAt: new Date().toISOString(),
+          lastSeenAt: new Date().toISOString()
+        }],
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         notes: 'Trial auto-provisionado no primeiro acesso',
         pricePaid: 0
@@ -132,8 +142,22 @@ licenseRouter.post('/verify', async (req: Request, res: Response): Promise<void>
 
     // Se autenticado via Senha Temporária do Admin, redefine a máquina e reativa o acesso
     if (authenticatedViaTempPass) {
+      if (!customer.allowedMachines) customer.allowedMachines = [];
+      const mIdx = customer.allowedMachines.findIndex(m => m.machineId === machineId);
+      if (mIdx >= 0) {
+        customer.allowedMachines[mIdx].lastSeenAt = new Date().toISOString();
+        if (hostname) customer.allowedMachines[mIdx].hostname = hostname;
+      } else {
+        customer.allowedMachines.push({
+          machineId,
+          hostname: hostname || 'Estação',
+          registeredAt: new Date().toISOString(),
+          lastSeenAt: new Date().toISOString()
+        });
+      }
       db.updateCustomer(customer.id, {
         machineId,
+        allowedMachines: customer.allowedMachines,
         status: customer.status === 'blocked' ? 'active' : customer.status,
         tempPassword: undefined,
         currentAppVersion: appVersion,
@@ -143,24 +167,48 @@ licenseRouter.post('/verify', async (req: Request, res: Response): Promise<void>
       if (customer.status === 'blocked') customer.status = 'active';
     }
 
-    // 2. Validação e Vinculação de Máquina (Hardware ID)
-    if (!customer.machineId) {
-      // Primeira ativação: vincula permanentemente à máquina que está efetuando o handshake
+    // 2. Validação e Vinculação de Máquina (Suporte a Múltiplas Máquinas)
+    if (!customer.allowedMachines) {
+      customer.allowedMachines = customer.machineId 
+        ? [{ machineId: customer.machineId, hostname: hostname || 'Principal', registeredAt: customer.createdAt, lastSeenAt: new Date().toISOString() }] 
+        : [];
+    }
+
+    const maxMachines = customer.maxMachines || 1;
+    const existingMachine = customer.allowedMachines.find(m => m.machineId === machineId);
+
+    if (existingMachine) {
+      existingMachine.lastSeenAt = new Date().toISOString();
+      if (hostname) existingMachine.hostname = hostname;
       db.updateCustomer(customer.id, {
-        machineId,
+        allowedMachines: customer.allowedMachines,
         currentAppVersion: appVersion,
         lastHandshakeAt: new Date().toISOString()
       });
-      customer.machineId = machineId;
-    } else if (customer.machineId !== machineId) {
-      // Máquina divergente: bloqueia o uso e instrui o cliente a solicitar o reset
-      res.status(403).json({
-        valid: false,
-        forceUpdate: false,
-        status: 'hardware_mismatch',
-        message: 'Esta licença já está vinculada a outro computador. Clique em "Resetar PC" no Painel Master para autorizar este computador.'
-      });
-      return;
+    } else {
+      if (customer.allowedMachines.length < maxMachines) {
+        customer.allowedMachines.push({
+          machineId,
+          hostname: hostname || 'Estação',
+          registeredAt: new Date().toISOString(),
+          lastSeenAt: new Date().toISOString()
+        });
+        db.updateCustomer(customer.id, {
+          machineId: customer.machineId || machineId,
+          allowedMachines: customer.allowedMachines,
+          currentAppVersion: appVersion,
+          lastHandshakeAt: new Date().toISOString()
+        });
+      } else {
+        res.status(403).json({
+          valid: false,
+          forceUpdate: false,
+          status: 'hardware_mismatch',
+          customerName: customer.customerName,
+          message: `Limite de computadores atingido (${customer.allowedMachines.length}/${maxMachines} máquinas autorizadas). Adicione o ID desta placa-mãe no Painel Master.`
+        });
+        return;
+      }
     }
 
     // 3. Validação de Bloqueio Manual pelo Administrador
@@ -200,12 +248,15 @@ licenseRouter.post('/verify', async (req: Request, res: Response): Promise<void>
     const licensePayload = {
       customerId: customer.id,
       customerName: customer.customerName,
+      customerEmail: customer.customerEmail,
       licenseKey: customer.licenseKey,
       licenseType: customer.licenseType,
       status: customer.status,
       isTrial: customer.isTrial,
       dailyLimit: customer.dailyLimit,
       expiresAt: customer.expiresAt,
+      maxMachines: customer.maxMachines || 1,
+      allowedMachines: customer.allowedMachines,
       machineId: customer.machineId
     };
 

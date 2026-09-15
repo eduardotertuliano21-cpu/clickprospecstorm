@@ -12,6 +12,7 @@ import { metaWebAuthService } from './metaWebAuthService.js';
 import { linkedinService } from './linkedinService.js';
 import { trayService } from './trayService.js';
 import { licenseService } from './licenseService.js';
+import { autoUpdateService } from './services/autoUpdateService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,7 +122,9 @@ function createMainWindow(resolvedIcon?: string) {
   trayService.init(mainWindow);
   licenseService.setMainWindow(mainWindow);
   licenseService.startPeriodicCheck();
-  loggerService.info('SYSTEM', 'Janela principal e Bandeja do Sistema (Tray) criadas com sucesso.');
+  autoUpdateService.setMainWindow(mainWindow);
+  autoUpdateService.startPeriodicCheck();
+  loggerService.info('SYSTEM', 'Janela principal, Auto-Update e Bandeja do Sistema (Tray) criadas com sucesso.');
 
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     loggerService.info('RENDERER', `[L${level}] ${message} (${sourceId}:${line})`);
@@ -434,6 +437,16 @@ ipcMain.handle('license:get-info', () => {
 
 ipcMain.handle('license:verify-key', async (_event, key: string) => {
   return await licenseService.verifyLicenseKey(key);
+});
+
+// Handlers de Auto-Update Contínuo
+ipcMain.handle('updater:check', async () => {
+  return await autoUpdateService.checkForUpdates();
+});
+
+ipcMain.handle('updater:quit-and-install', () => {
+  autoUpdateService.quitAndInstall();
+  return true;
 });
 
 ipcMain.handle('open-external', async (_event, url: string) => {

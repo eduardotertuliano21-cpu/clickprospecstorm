@@ -2,6 +2,13 @@
   "appId": "com.clickleadstorm.desktop",
   "productName": "Click Lead Storm",
   "copyright": "Copyright © 2026 Click Lead Storm",
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "eduardotertuliano21-cpu",
+      "repo": "clickprospecstorm"
+    }
+  ],
   "directories": {
     "output": "release"
   },

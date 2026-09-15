@@ -138,5 +138,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Notificações Nativas do Windows
   notifyLeadReply: (data) => ipcRenderer.send('notify:lead-reply', data),
-  notifyCampaignCompleted: (data) => ipcRenderer.send('notify:campaign-completed', data)
+  notifyCampaignCompleted: (data) => ipcRenderer.send('notify:campaign-completed', data),
+
+  // Auto-Update Contínuo
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  quitAndInstallUpdate: () => ipcRenderer.invoke('updater:quit-and-install'),
+  onUpdateAvailable: (callback) => {
+    const subscription = (_event, info) => callback(info);
+    ipcRenderer.on('updater:available', subscription);
+    return () => ipcRenderer.removeListener('updater:available', subscription);
+  },
+  onUpdateProgress: (callback) => {
+    const subscription = (_event, progress) => callback(progress);
+    ipcRenderer.on('updater:download-progress', subscription);
+    return () => ipcRenderer.removeListener('updater:download-progress', subscription);
+  },
+  onUpdateDownloaded: (callback) => {
+    const subscription = (_event, info) => callback(info);
+    ipcRenderer.on('updater:downloaded', subscription);
+    return () => ipcRenderer.removeListener('updater:downloaded', subscription);
+  }
 });

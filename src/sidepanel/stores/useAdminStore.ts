@@ -2,9 +2,11 @@ import { create } from 'zustand';
 
 interface AdminState {
   isAdmin: boolean;
+  isEmergencyBypassed: boolean;
   adminEmail: string;
   loginError: string | null;
-  login: (email: string, pass: string) => boolean;
+  login: (email: string, pass: string, isEmergencyUnlock?: boolean) => boolean;
+  emergencyLock: () => void;
   logout: () => void;
   changePassword: (oldPass: string, newPass: string) => { success: boolean; message: string };
 }
@@ -21,10 +23,11 @@ export const useAdminStore = create<AdminState>((set, get) => {
 
   return {
     isAdmin: storedIsAdmin,
+    isEmergencyBypassed: false, // Inicia bloqueado em caso de status 'blocked'
     adminEmail: DEFAULT_EMAIL,
     loginError: null,
 
-    login: (email: string, pass: string) => {
+    login: (email: string, pass: string, isEmergencyUnlock = false) => {
       const currentStoredPass = (typeof window !== 'undefined' && localStorage.getItem(STORAGE_PASS_KEY)) || '2111993@Edu';
       
       const cleanEmail = email.trim().toLowerCase();
@@ -34,12 +37,12 @@ export const useAdminStore = create<AdminState>((set, get) => {
       if (isMasterEmail && isMasterPass) {
         if (typeof window !== 'undefined') {
           localStorage.setItem(STORAGE_ADMIN_KEY, 'true');
-          // Ativa licença vitalícia no backend local para manter desbloqueado permanentemente
-          if ((window as any).electronAPI?.verifyLicense) {
-            (window as any).electronAPI.verifyLicense('CLS-ADMIN-LIFETIME').catch(() => {});
-          }
         }
-        set({ isAdmin: true, loginError: null });
+        set({ 
+          isAdmin: true, 
+          isEmergencyBypassed: isEmergencyUnlock || get().isEmergencyBypassed,
+          loginError: null 
+        });
         return true;
       } else {
         set({ loginError: 'E-mail ou senha de administrador incorretos.' });
@@ -47,11 +50,15 @@ export const useAdminStore = create<AdminState>((set, get) => {
       }
     },
 
+    emergencyLock: () => {
+      set({ isEmergencyBypassed: false });
+    },
+
     logout: () => {
       if (typeof window !== 'undefined') {
         localStorage.removeItem(STORAGE_ADMIN_KEY);
       }
-      set({ isAdmin: false, loginError: null });
+      set({ isAdmin: false, isEmergencyBypassed: false, loginError: null });
     },
 
     changePassword: (oldPass: string, newPass: string) => {

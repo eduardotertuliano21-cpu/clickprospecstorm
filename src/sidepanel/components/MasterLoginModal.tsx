@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { ShieldCheck, Lock, Mail, X, KeyRound, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAdminStore } from '../stores/useAdminStore';
 
@@ -21,7 +21,7 @@ export const MasterLoginModal: React.FC<MasterLoginModalProps> = ({ isOpen, onCl
     e.preventDefault();
     setLocalError(null);
 
-    const ok = login(email, password);
+    const ok = login(email, password, true);
     if (ok) {
       setLocalSuccess(true);
       setTimeout(() => {

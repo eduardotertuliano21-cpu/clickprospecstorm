@@ -33,7 +33,7 @@ export const App: React.FC = () => {
     machineId: string;
     hostname?: string;
     customerName?: string;
-    status: 'active' | 'trial' | 'blocked' | 'expired';
+    status: 'active' | 'trial' | 'blocked' | 'expired' | 'hardware_mismatch';
     isTrial: boolean;
     dailyLimit?: number;
     message?: string;
@@ -118,8 +118,8 @@ export const App: React.FC = () => {
     { id: 'settings', label: 'Ajustes', icon: Settings, tooltip: 'Configurações de Contas, Canais e Segurança', shortcut: 'Alt+5' },
   ];
 
-  const { isAdmin } = useAdminStore();
-  const isLocked = !isAdmin && (licenseData?.status === 'blocked' || licenseData?.status === 'expired');
+  const { isEmergencyBypassed } = useAdminStore();
+  const isLocked = !isEmergencyBypassed && (licenseData?.status === 'blocked' || licenseData?.status === 'expired' || licenseData?.status === 'hardware_mismatch');
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden select-none relative">

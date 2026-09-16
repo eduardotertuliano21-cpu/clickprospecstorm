@@ -23,7 +23,7 @@ import logoImg from '../../assets/logo.png';
 import { useAdminStore } from '../stores/useAdminStore';
 
 export const Header: React.FC = () => {
-  const { isAdmin } = useAdminStore();
+  const { isAdmin, isEmergencyBypassed, emergencyLock } = useAdminStore();
   const [stationLicense, setStationLicense] = useState<any>(null);
   const [isWppReady, setIsWppReady] = useState<boolean>(false);
   const [checking, setChecking] = useState(false);
@@ -179,11 +179,21 @@ export const Header: React.FC = () => {
               <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 {isElectron ? 'Desktop Baileys' : 'Chrome Extension'}
               </span>
-              {isAdmin && (
+              {isEmergencyBypassed ? (
+                <button
+                  type="button"
+                  onClick={emergencyLock}
+                  className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1.5 hover:bg-amber-500/30 transition shadow-sm cursor-pointer"
+                  title="Desbloqueio Mestre Temporário Ativo. Clique para bloquear o sistema imediatamente."
+                >
+                  <span>👑 Mestre</span>
+                  <span className="text-rose-400 font-extrabold hover:underline">🔒 Bloquear</span>
+                </button>
+              ) : isAdmin ? (
                 <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold flex items-center gap-1">
                   👑 Mestre
                 </span>
-              )}
+              ) : null}
             </h1>
             <p className="text-[11px] text-slate-400">Prospect & CRM B2B Local com IA</p>
           </div>

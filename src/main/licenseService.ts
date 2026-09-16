@@ -302,13 +302,18 @@ class LicenseService {
   public startPeriodicCheck() {
     if (this.checkInterval) clearInterval(this.checkInterval);
 
-    // Validação a cada 2 horas (2 * 60 * 60 * 1000)
+    // Validação em segundo plano a cada 30 segundos para bloqueio/desbloqueio em tempo quase real
     this.checkInterval = setInterval(() => {
-      this.performRemoteCheck();
-    }, 2 * 60 * 60 * 1000);
+      this.performRemoteCheck().catch(() => {});
+    }, 30 * 1000);
 
     // Checagem inicial
-    this.performRemoteCheck();
+    this.performRemoteCheck().catch(() => {});
+  }
+
+  public async checkLicenseNow(): Promise<LicenseData> {
+    await this.performRemoteCheck();
+    return this.getLicenseInfo();
   }
 
   private async performRemoteCheck() {
@@ -347,18 +352,21 @@ class LicenseService {
           lic.customerName = supaRes.customer_name || lic.customerName;
           lic.ownerEmail = supaRes.customer_email || lic.ownerEmail;
           lic.lastCheckedAt = new Date().toISOString();
+          this.currentLicense = { ...lic };
           this.saveLicense(lic);
           this.notifyRenderer();
           return;
         } else {
           lic.status = supaRes.status || 'blocked';
           lic.message = supaRes.message || 'Licença bloqueada pelo Supabase.';
+          loggerService.warn('LICENSE', `Licença bloqueada pelo Supabase Cloud: ${lic.message}`);
+          this.currentLicense = { ...lic };
           this.saveLicense(lic);
           this.notifyRenderer();
           return;
         }
       } catch (err: any) {
-        loggerService.warn('LICENSE', `Checagem periódica no Supabase falhou (${err.message}). Tentando servidor local.`);
+        loggerService.warn('LICENSE', `Checagem periódica no Supabase falhou (${err.message}). Tentando servidor central.`);
       }
     }
 
@@ -388,6 +396,8 @@ class LicenseService {
       if (res.status === 403 || res.status === 404) {
         lic.status = body.status || 'blocked';
         lic.message = body.message || 'Licença bloqueada pelo servidor central.';
+        loggerService.warn('LICENSE', `[BLOQUEIO] Servidor retornou ${res.status}: ${lic.status.toUpperCase()} - ${lic.message}`);
+        this.currentLicense = { ...lic };
         this.saveLicense(lic);
         this.notifyRenderer();
         return;
@@ -401,6 +411,7 @@ class LicenseService {
         lic.customerName = body.license.customerName || lic.customerName;
         lic.ownerEmail = body.license.customerEmail || lic.ownerEmail;
         lic.lastCheckedAt = new Date().toISOString();
+        this.currentLicense = { ...lic };
         this.saveLicense(lic);
         this.notifyRenderer();
         return;

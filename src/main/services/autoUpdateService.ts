@@ -55,8 +55,13 @@ class AutoUpdateService {
     });
 
     autoUpdater.on('error', (err: any) => {
-      loggerService.warn('AUTO_UPDATE', `Erro ao verificar/baixar atualização: ${err?.message || err}`);
-      this.sendToRenderer('updater:error', { message: err?.message || 'Erro no auto-update' });
+      const msg = err?.message || String(err);
+      if (msg.includes('No published versions on GitHub') || msg.includes('404')) {
+        loggerService.info('AUTO_UPDATE', 'Nenhuma nova versão publicada no GitHub Releases até o momento.');
+        return;
+      }
+      loggerService.warn('AUTO_UPDATE', `Erro ao verificar/baixar atualização: ${msg}`);
+      this.sendToRenderer('updater:error', { message: msg || 'Erro no auto-update' });
     });
 
     autoUpdater.on('download-progress', (progressObj: any) => {
@@ -98,8 +103,13 @@ class AutoUpdateService {
       await autoUpdater.checkForUpdates();
       return { checking: true, message: 'Verificando atualizações no GitHub Releases...' };
     } catch (err: any) {
-      loggerService.error('AUTO_UPDATE', `Falha ao checar atualizações: ${err.message}`);
-      return { checking: false, message: err.message };
+      const msg = err?.message || String(err);
+      if (msg.includes('No published versions on GitHub') || msg.includes('404')) {
+        loggerService.info('AUTO_UPDATE', 'Nenhuma versão publicada no GitHub Releases até o momento.');
+        return { checking: false, message: 'Nenhuma nova versão publicada no GitHub.' };
+      }
+      loggerService.error('AUTO_UPDATE', `Falha ao checar atualizações: ${msg}`);
+      return { checking: false, message: msg };
     }
   }
 

@@ -202,6 +202,14 @@ function createMainWindow(resolvedIcon?: string) {
     return { action: 'deny' };
   });
 
+  // Atualiza e valida licença em tempo real toda vez que a janela ganha foco ou é exibida
+  mainWindow.on('focus', () => {
+    licenseService.checkLicenseNow().catch(() => {});
+  });
+  mainWindow.on('show', () => {
+    licenseService.checkLicenseNow().catch(() => {});
+  });
+
   // Minimiza para a bandeja do sistema ao fechar a janela, mantendo o processo em segundo plano
   mainWindow.on('close', (event) => {
     if (!(app as any).isQuitting) {
@@ -431,8 +439,8 @@ ipcMain.on('tray:set-whatsapp-status', (_event, status: 'Conectado' | 'Desconect
 });
 
 // Handlers de Licença e Bloqueio Remoto
-ipcMain.handle('license:get-info', () => {
-  return licenseService.getLicenseInfo();
+ipcMain.handle('license:get-info', async () => {
+  return await licenseService.checkLicenseNow();
 });
 
 ipcMain.handle('license:verify-key', async (_event, key: string) => {

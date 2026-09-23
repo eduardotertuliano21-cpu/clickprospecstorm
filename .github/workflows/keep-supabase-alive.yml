@@ -1,0 +1,27 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Dispara a cada 2 dias às 06:00 UTC (03:00 Horário de Brasília)
+    - cron: '0 6 */2 * *'
+  workflow_dispatch: # Permite disparar manualmente pelo painel do GitHub Actions
+
+jobs:
+  ping-supabase:
+    name: Heartbeat Supabase Cloud
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          echo "Enviando requisição de heartbeat para o Supabase..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: sb_publishable_IYrTXeaGQCqaujq0dcyhag_OTea-_qQ" \
+            -H "Authorization: Bearer sb_publishable_IYrTXeaGQCqaujq0dcyhag_OTea-_qQ" \
+            "https://ssbtgywzeezxocibajcx.supabase.co/rest/v1/licenses?select=id&limit=1")
+          
+          echo "Status retornado pelo Supabase: HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Sucesso! O banco Supabase registrou atividade e não será pausado."
+          else
+            echo "⚠️ Alerta: Supabase respondeu HTTP $HTTP_CODE. Requisição foi computada pelo gateway."
+          fi

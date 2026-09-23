@@ -118,6 +118,7 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
 
   // Modal unificado de cadastro / prospecção de leads
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addModalTab, setAddModalTab] = useState<'manual' | 'maps' | 'cnpj' | 'csv' | 'linkedin'>('maps');
 
   // useLiveQuery com busca e filtros
   const rawLeads = useLiveQuery(async () => {
@@ -577,13 +578,28 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
             </button>
           </Tooltip>
 
-          {/* Botão Primário: Novo Contato */}
+          {/* Botão de Destaque: Buscar no Google Maps */}
           <button
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={() => {
+              setAddModalTab('maps');
+              setIsAddModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/40 text-sky-300 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap"
+            title="Extrair leads e empresas diretamente do Google Maps"
+          >
+            <span>🗺️ Buscar no Google Maps</span>
+          </button>
+
+          {/* Botão Primário: Adicionar Contato */}
+          <button
+            onClick={() => {
+              setAddModalTab('manual');
+              setIsAddModalOpen(true);
+            }}
             className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-md shadow-emerald-600/20 transition-all active:scale-95 whitespace-nowrap"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>+ Novo Contato</span>
+            <span>+ Adicionar Contato</span>
           </button>
 
           {/* Toggle de Visualização Compacto */}
@@ -1173,6 +1189,13 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
           <span>{toastMsg}</span>
         </div>
       )}
+
+      {/* Modal Unificado de Cadastro / Busca no Google Maps */}
+      <AddLeadModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        defaultTab={addModalTab}
+      />
     </div>
   );
 };

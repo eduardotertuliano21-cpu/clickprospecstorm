@@ -7,6 +7,7 @@ import { CONFIG } from './config.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { licenseRouter } from './routes/license.js';
+import { startSupabaseKeepAlive } from './services/supabaseKeepAlive.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +58,9 @@ const server = app.listen(CONFIG.PORT, () => {
   console.log(`💻 Painel Master Web em: http://localhost:${CONFIG.PORT}`);
   console.log(`👑 Admin E-mail: ${CONFIG.ADMIN_EMAIL}`);
   console.log(`======================================================\n`);
+
+  // Inicia o serviço para manter o Supabase ativo 24/7 sem pausar
+  startSupabaseKeepAlive();
 });
 
 export { app, server };

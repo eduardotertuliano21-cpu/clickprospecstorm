@@ -235,47 +235,48 @@ export const Header: React.FC = () => {
         })()}
 
         <div className="flex items-center gap-3">
-          {/* Contador Diário */}
-          <div className="text-right">
-            <div className="text-[10px] text-slate-400">Envios Hoje</div>
-            <div className="text-xs font-semibold text-slate-200">
+          {/* Contador Diário Amigável */}
+          <div className="hidden sm:flex flex-col items-end text-right px-2.5 py-1 bg-slate-950/60 rounded-xl border border-slate-800/80">
+            <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Envios Disponíveis Hoje</span>
+            <div className="text-xs font-bold text-slate-100 flex items-center gap-1">
               <span className={sentToday >= dailyQuota ? 'text-rose-400' : 'text-emerald-400'}>{sentToday}</span>
-              <span className="text-slate-500">/{dailyQuota}</span>
+              <span className="text-slate-500">/</span>
+              <span className="text-slate-300">{dailyQuota >= 99999 ? 'Ilimitado' : dailyQuota}</span>
             </div>
           </div>
 
-          {/* Status de Conexão WhatsApp */}
+          {/* Status de Conexão WhatsApp - Chamada Clara e Intuitiva */}
           {isElectron ? (
             <button
               onClick={handleStatusClick}
               title={
                 waStatus === 'connected'
-                  ? `WhatsApp Conectado: ${connectedPhone || 'Sessão Ativa'}. Clique para gerenciar.`
-                  : 'Clique para conectar o WhatsApp via QR Code'
+                  ? `WhatsApp Conectado com sucesso (${connectedPhone || 'Sessão Ativa'}). Clique para gerenciar ou desconectar.`
+                  : 'Clique aqui para escanear o QR Code no seu WhatsApp e conectar o sistema'
               }
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all shadow-md active:scale-95 ${
                 waStatus === 'connected'
-                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25 shadow-sm shadow-emerald-500/10'
+                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900/90 shadow-emerald-500/10'
                   : waStatus === 'connecting'
-                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
-                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750 hover:text-white'
+                  ? 'bg-amber-950/80 text-amber-300 border-amber-500/50 hover:bg-amber-900/80'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-emerald-600/30 animate-pulse'
               }`}
             >
               {waStatus === 'connected' ? (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>{connectedPhone || 'WhatsApp Conectado'}</span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                  <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="truncate max-w-[150px]">{connectedPhone || 'WhatsApp Conectado'}</span>
                 </>
               ) : waStatus === 'connecting' ? (
                 <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                  <span>Conectando...</span>
+                  <RefreshCw className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
+                  <span>Conectando WhatsApp...</span>
                 </>
               ) : (
                 <>
-                  <QrCode className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Conectar WhatsApp</span>
+                  <QrCode className="w-4 h-4 text-white shrink-0" />
+                  <span>📲 Conectar WhatsApp Agora</span>
                 </>
               )}
             </button>

@@ -10,6 +10,7 @@ import { MasterLoginModal } from './components/MasterLoginModal';
 import { ForceUpdateModal, type ForceUpdateInfo } from './components/ForceUpdateModal';
 import { autoResponderService } from '../services/autoResponderService';
 import { useAdminStore } from './stores/useAdminStore';
+import { ErrorBoundary } from './components/ErrorBoundary';
 type TabType = 'crm' | 'chat' | 'campaign' | 'autoresponder' | 'settings';
 
 export const App: React.FC = () => {
@@ -139,18 +140,20 @@ export const App: React.FC = () => {
       />
       {/* 2. ÁREA DE CONTEÚDO PRINCIPAL (100% DA LARGURA E ALTURA ÚTIL) */}
       <main className="flex-1 flex flex-col overflow-hidden bg-slate-950">
-        {activeTab === 'crm' && (
-          <CRMTab onStartCampaignWithLeads={handleStartCampaignFromCRM} />
-        )}
-        {activeTab === 'chat' && <ChatTab />}
-        {activeTab === 'campaign' && (
-          <CampaignTab 
-            selectedLeadIds={selectedCampaignLeadIds}
-            onClearSelectedLeads={() => setSelectedCampaignLeadIds(null)}
-          />
-        )}
-        {activeTab === 'autoresponder' && <AutoResponderTab />}
-        {activeTab === 'settings' && <SettingsTab />}
+        <ErrorBoundary fallbackTitle={`Ocorreu um erro ao carregar a aba ${activeTab.toUpperCase()}`}>
+          {activeTab === 'crm' && (
+            <CRMTab onStartCampaignWithLeads={handleStartCampaignFromCRM} />
+          )}
+          {activeTab === 'chat' && <ChatTab />}
+          {activeTab === 'campaign' && (
+            <CampaignTab 
+              selectedLeadIds={selectedCampaignLeadIds}
+              onClearSelectedLeads={() => setSelectedCampaignLeadIds(null)}
+            />
+          )}
+          {activeTab === 'autoresponder' && <AutoResponderTab />}
+          {activeTab === 'settings' && <SettingsTab />}
+        </ErrorBoundary>
       </main>
     </div>
   );

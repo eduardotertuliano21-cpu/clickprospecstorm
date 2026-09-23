@@ -60,12 +60,27 @@ const CHANNEL_CONFIG: Record<ChannelType, { label: string; icon: React.FC<{ clas
 };
 
 /**
+ * Formata timestamps de mensagem de forma segura evitando RangeError
+ */
+function formatMessageTime(timestamp: any): string {
+  if (!timestamp) return '';
+  const num = Number(timestamp);
+  if (isNaN(num)) return '';
+  const date = new Date(num < 10000000000 ? num * 1000 : num);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
  * Formata os identificadores de contato de forma amigável conforme a rede social
  */
-function formatContactDetails(contactId: string, channel: ChannelType, name?: string, company?: string) {
-  if (channel === 'whatsapp') {
-    let formattedPhone = contactId;
-    const digits = contactId.replace(/\D/g, '');
+function formatContactDetails(contactId: string | undefined | null, channel?: ChannelType, name?: string, company?: string) {
+  const safeId = String(contactId || '').trim();
+  const safeChannel = channel || 'whatsapp';
+
+  if (safeChannel === 'whatsapp') {
+    let formattedPhone = safeId;
+    const digits = safeId.replace(/\D/g, '');
     if (digits.length === 13 && digits.startsWith('55')) {
       formattedPhone = `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
     } else if (digits.length === 12 && digits.startsWith('55')) {
@@ -73,39 +88,48 @@ function formatContactDetails(contactId: string, channel: ChannelType, name?: st
     } else if (digits.length >= 10) {
       formattedPhone = `+${digits}`;
     }
+    const finalTitle = name || company || formattedPhone || 'Contato WhatsApp';
     return {
-      title: name || company || formattedPhone,
+      title: finalTitle,
       subtitle: (name || company) ? formattedPhone : 'WhatsApp',
-      displayId: formattedPhone
+      displayId: formattedPhone || 'Sem número'
     };
   }
-  if (channel === 'instagram') {
-    const handle = contactId.startsWith('@') ? contactId : `@${contactId}`;
+  if (safeChannel === 'instagram') {
+    const handle = safeId ? (safeId.startsWith('@') ? safeId : `@${safeId}`) : '@instagram';
+    const finalTitle = name || company || handle;
     return {
-      title: name || company || handle,
+      title: finalTitle,
       subtitle: (name || company) ? handle : 'Instagram Direct',
       displayId: handle
     };
   }
-  if (channel === 'email') {
+  if (safeChannel === 'email') {
+    const finalTitle = name || company || safeId || 'E-mail';
     return {
-      title: name || company || contactId,
-      subtitle: (name || company) ? contactId : 'E-mail',
-      displayId: contactId
+      title: finalTitle,
+      subtitle: (name || company) ? safeId : 'E-mail',
+      displayId: safeId || 'Sem e-mail'
     };
   }
+  const finalTitle = name || company || safeId || 'Contato';
   return {
-    title: name || company || contactId,
-    subtitle: contactId,
-    displayId: contactId
+    title: finalTitle,
+    subtitle: safeId,
+    displayId: safeId
   };
 }
 
 /**
  * Renderiza o conteúdo da mensagem formatando mídias (áudio, figurinhas, imagens)
  */
-function renderMessageText(content: string) {
-  if (content === '[Imagem]') {
+function renderMessageText(content: any) {
+  if (content === null || content === undefined || content === '') {
+    return <span className="text-slate-400 italic text-[11px]">(Mensagem sem texto)</span>;
+  }
+  const text = typeof content === 'string' ? content : String(content);
+
+  if (text === '[Imagem]') {
     return (
       <span className="flex items-center gap-1.5 py-0.5 text-emerald-300 font-medium">
         <ImageIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -113,7 +137,7 @@ function renderMessageText(content: string) {
       </span>
     );
   }
-  if (content === '[Figurinha]') {
+  if (text === '[Figurinha]') {
     return (
       <span className="flex items-center gap-1.5 py-0.5 text-amber-300 font-medium">
         <Smile className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -121,7 +145,7 @@ function renderMessageText(content: string) {
       </span>
     );
   }
-  if (content === '[Áudio]') {
+  if (text === '[Áudio]') {
     return (
       <span className="flex items-center gap-1.5 py-0.5 text-blue-300 font-medium">
         <Mic className="w-3.5 h-3.5 text-blue-400 shrink-0" />
@@ -129,7 +153,7 @@ function renderMessageText(content: string) {
       </span>
     );
   }
-  if (content === '[Vídeo]') {
+  if (text === '[Vídeo]') {
     return (
       <span className="flex items-center gap-1.5 py-0.5 text-purple-300 font-medium">
         <Video className="w-3.5 h-3.5 text-purple-400 shrink-0" />
@@ -137,8 +161,8 @@ function renderMessageText(content: string) {
       </span>
     );
   }
-  if (content.startsWith('[Arquivo:')) {
-    const filename = content.replace(/^\[Arquivo:\s*/, '').replace(/\]$/, '');
+  if (text.startsWith('[Arquivo:')) {
+    const filename = text.replace(/^\[Arquivo:\s*/, '').replace(/\]$/, '');
     return (
       <span className="flex items-center gap-1.5 py-0.5 text-sky-300 font-medium">
         <FileText className="w-3.5 h-3.5 text-sky-400 shrink-0" />
@@ -146,7 +170,7 @@ function renderMessageText(content: string) {
       </span>
     );
   }
-  return <p className="whitespace-pre-wrap leading-relaxed text-xs">{content}</p>;
+  return <p className="whitespace-pre-wrap leading-relaxed text-xs break-words">{text}</p>;
 }
 
 export const ChatTab: React.FC = () => {
@@ -189,20 +213,35 @@ export const ChatTab: React.FC = () => {
 
   // Consulta reativa de conversas unificadas
   const conversations = useLiveQuery(async () => {
-    const filter = channelFilter === 'all' ? undefined : channelFilter;
-    return await omnichannelRepository.getConversations(filter);
+    try {
+      const filter = channelFilter === 'all' ? undefined : channelFilter;
+      return await omnichannelRepository.getConversations(filter);
+    } catch (err) {
+      console.error('[ChatTab] Erro ao carregar conversas:', err);
+      return [];
+    }
   }, [channelFilter]) || [];
 
   // Mensagens do contato selecionado
   const activeMessages = useLiveQuery(async () => {
-    if (!selectedContactId) return [];
-    return await omnichannelRepository.getMessages(selectedContactId);
+    try {
+      if (!selectedContactId) return [];
+      return await omnichannelRepository.getMessages(selectedContactId);
+    } catch (err) {
+      console.error('[ChatTab] Erro ao carregar mensagens:', err);
+      return [];
+    }
   }, [selectedContactId]) || [];
 
   // Lead correspondente
   const selectedLead = useLiveQuery(async () => {
-    if (!selectedContactId) return null;
-    return await leadRepository.getLeadByPhone(selectedContactId);
+    try {
+      if (!selectedContactId) return null;
+      return await leadRepository.getLeadByPhone(selectedContactId);
+    } catch (err) {
+      console.error('[ChatTab] Erro ao carregar lead:', err);
+      return null;
+    }
   }, [selectedContactId]);
 
   // Conversa ativa selecionada
@@ -380,13 +419,14 @@ export const ChatTab: React.FC = () => {
   }) || [];
 
   const filteredConversations = conversations.filter(c => {
+    if (!c) return false;
     if (!searchFilter.trim()) return true;
     const term = searchFilter.toLowerCase();
     return (
-      c.contactId.toLowerCase().includes(term) ||
+      (c.contactId || '').toLowerCase().includes(term) ||
       (c.contactName && c.contactName.toLowerCase().includes(term)) ||
       (c.companyName && c.companyName.toLowerCase().includes(term)) ||
-      c.lastMessage.toLowerCase().includes(term)
+      (c.lastMessage && c.lastMessage.toLowerCase().includes(term))
     );
   });
 
@@ -581,7 +621,7 @@ export const ChatTab: React.FC = () => {
             filteredConversations.map((conv) => {
               const isSelected = selectedContactId === conv.contactId;
               const chConfig = CHANNEL_CONFIG[conv.channel] || CHANNEL_CONFIG.whatsapp;
-              const ChannelIcon = chConfig.icon;
+              const ChannelIcon = chConfig?.icon || MessageSquare;
               const details = formatContactDetails(conv.contactId, conv.channel, conv.contactName, conv.companyName);
 
               return (
@@ -607,7 +647,7 @@ export const ChatTab: React.FC = () => {
                   {/* AVATAR COM ÍCONE DO CANAL */}
                   <div className="relative shrink-0 mt-0.5">
                     <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-bold text-xs">
-                      {details.title.charAt(0).toUpperCase()}
+                      {(details.title ? details.title.charAt(0).toUpperCase() : '?')}
                     </div>
                     <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border border-slate-900 flex items-center justify-center ${chConfig.bg} ${chConfig.color}`}>
                       <ChannelIcon className="w-2.5 h-2.5" />
@@ -621,7 +661,7 @@ export const ChatTab: React.FC = () => {
                         {details.title}
                       </span>
                       <span className="text-[10px] text-slate-500 font-mono shrink-0">
-                        {new Date(conv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatMessageTime(conv.timestamp)}
                       </span>
                     </div>
 
@@ -685,7 +725,7 @@ export const ChatTab: React.FC = () => {
                 <>
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200 font-bold text-sm">
-                      {activeDetails.title.charAt(0).toUpperCase()}
+                      {(activeDetails.title ? activeDetails.title.charAt(0).toUpperCase() : '?')}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -698,7 +738,7 @@ export const ChatTab: React.FC = () => {
                           </span>
                         )}
                         <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold flex items-center gap-1 ${chConfig.bg} ${chConfig.border} ${chConfig.color}`}>
-                          {React.createElement(chConfig.icon || MessageSquare, { className: 'w-2.5 h-2.5' })}
+                          {React.createElement(chConfig?.icon || MessageSquare, { className: 'w-2.5 h-2.5' })}
                           {chConfig.label}
                         </span>
                       </div>
@@ -781,7 +821,7 @@ export const ChatTab: React.FC = () => {
               activeMessages.map((msg, idx) => {
                 const isMe = msg.direction === 'outgoing';
                 const chCfg = CHANNEL_CONFIG[msg.channel] || CHANNEL_CONFIG.whatsapp;
-                const Icon = chCfg.icon;
+                const Icon = chCfg?.icon || MessageSquare;
 
                 return (
                   <div
@@ -796,7 +836,7 @@ export const ChatTab: React.FC = () => {
                           x: e.clientX,
                           y: e.clientY,
                           title: 'Mensagem',
-                          subtitle: `${chCfg.label} • ${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+                          subtitle: `${chCfg?.label || 'Mensagem'} • ${formatMessageTime(msg.timestamp)}`,
                           items: getMsgContextMenuItems(msg)
                         });
                       }}
@@ -810,10 +850,10 @@ export const ChatTab: React.FC = () => {
                       <div className="flex items-center justify-between gap-3 text-[10px] opacity-75 border-b border-white/10 pb-1">
                         <span className="flex items-center gap-1 font-semibold">
                           <Icon className="w-2.5 h-2.5" />
-                          {chCfg.label}
+                          {chCfg?.label || 'WhatsApp'}
                         </span>
                         <span>
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {formatMessageTime(msg.timestamp)}
                         </span>
                       </div>
 

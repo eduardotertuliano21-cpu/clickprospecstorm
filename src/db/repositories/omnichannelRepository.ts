@@ -70,22 +70,25 @@ export const omnichannelRepository = {
 
     // 1. Processa mensagens da tabela de chatMessages legada (WhatsApp)
     for (const msg of legacyChats) {
-      const cleanPhone = msg.phone.replace(/\D/g, '');
+      if (!msg) continue;
+      const phone = String(msg.phone || '');
+      const cleanPhone = phone.replace(/\D/g, '');
       // Ignora newsletters e grupos do WhatsApp (IDs de 18 dígitos ou inválidos)
-      if (cleanPhone.length > 15 || cleanPhone.length < 8 || cleanPhone.startsWith('120363')) {
+      if (!cleanPhone || cleanPhone.length > 15 || cleanPhone.length < 8 || cleanPhone.startsWith('120363')) {
         continue;
       }
 
       const key = `whatsapp:${cleanPhone}`;
       const existing = conversationMap.get(key);
+      const msgTime = Number(msg.timestamp) || Date.now();
 
-      if (!existing || msg.timestamp > existing.timestamp) {
+      if (!existing || msgTime > existing.timestamp) {
         conversationMap.set(key, {
           contactId: cleanPhone,
           channel: 'whatsapp',
-          contactName: msg.contactName,
-          lastMessage: msg.body,
-          timestamp: msg.timestamp,
+          contactName: msg.contactName || undefined,
+          lastMessage: String(msg.body || ''),
+          timestamp: msgTime,
           unreadCount: (!msg.fromMe && msg.status !== 'read') ? 1 : 0
         });
       }
@@ -93,28 +96,34 @@ export const omnichannelRepository = {
 
     // 2. Processa mensagens unificadas multicanal (WhatsApp, E-mail, Instagram, Messenger)
     for (const msg of allUnified) {
+      if (!msg) continue;
+      const rawContactId = String(msg.contactId || '').trim();
+      if (!rawContactId) continue;
+
       const isWa = msg.channel === 'whatsapp';
-      const cleanContactId = isWa ? msg.contactId.replace(/\D/g, '') : msg.contactId.trim();
+      const cleanContactId = isWa ? rawContactId.replace(/\D/g, '') : rawContactId;
+
+      if (!cleanContactId) continue;
 
       // Ignora newsletters e grupos no WhatsApp
       if (isWa && (cleanContactId.length > 15 || cleanContactId.length < 8 || cleanContactId.startsWith('120363'))) {
         continue;
       }
 
-      const key = `${msg.channel}:${cleanContactId}`;
+      const key = `${msg.channel || 'whatsapp'}:${cleanContactId}`;
       const existing = conversationMap.get(key);
-
+      const msgTime = Number(msg.timestamp) || Date.now();
       const isUnread = msg.direction === 'incoming' && msg.status !== 'read';
 
-      if (!existing || msg.timestamp > existing.timestamp) {
+      if (!existing || msgTime > existing.timestamp) {
         conversationMap.set(key, {
           contactId: cleanContactId,
-          channel: msg.channel,
-          contactName: existing?.contactName || msg.sender !== 'Minha Empresa' ? msg.sender : undefined,
+          channel: msg.channel || 'whatsapp',
+          contactName: existing?.contactName || (msg.sender && msg.sender !== 'Minha Empresa' ? msg.sender : undefined),
           companyName: existing?.companyName,
-          lastMessage: msg.content,
+          lastMessage: String(msg.content || ''),
           subject: msg.subject,
-          timestamp: msg.timestamp,
+          timestamp: msgTime,
           unreadCount: (existing?.unreadCount || 0) + (isUnread ? 1 : 0)
         });
       } else if (isUnread) {
@@ -197,16 +206,18 @@ export const omnichannelRepository = {
    * Remove mensagens de uma conversa específica do histórico local
    */
   async deleteConversation(contactId: string, channel?: ChannelType): Promise<void> {
-    const cleanId = channel === 'whatsapp' ? contactId.replace(/\D/g, '') : contactId;
+    if (!contactId) return;
+    const safeContactId = String(contactId);
+    const cleanId = channel === 'whatsapp' ? safeContactId.replace(/\D/g, '') : safeContactId;
 
     if (channel) {
-      await db.unifiedMessages.filter(m => (m.contactId === contactId || m.contactId === cleanId) && m.channel === channel).delete();
+      await db.unifiedMessages.filter(m => !!m && (m.contactId === safeContactId || m.contactId === cleanId) && m.channel === channel).delete();
       if (channel === 'whatsapp') {
-        await db.chatMessages.filter(m => m.phone === contactId || m.phone === cleanId).delete();
+        await db.chatMessages.filter(m => !!m && (m.phone === safeContactId || m.phone === cleanId)).delete();
       }
     } else {
-      await db.unifiedMessages.filter(m => m.contactId === contactId || m.contactId === cleanId).delete();
-      await db.chatMessages.filter(m => m.phone === contactId || m.phone === cleanId).delete();
+      await db.unifiedMessages.filter(m => !!m && (m.contactId === safeContactId || m.contactId === cleanId)).delete();
+      await db.chatMessages.filter(m => !!m && (m.phone === safeContactId || m.phone === cleanId)).delete();
     }
   },
 
@@ -217,16 +228,18 @@ export const omnichannelRepository = {
     let count = 0;
     try {
       count += await db.unifiedMessages.filter(m => {
+        if (!m) return false;
         if (m.channel === 'whatsapp') {
-          const d = m.contactId.replace(/\D/g, '');
-          return d.startsWith('120363') || d.length > 15 || d.length < 8;
+          const d = String(m.contactId || '').replace(/\D/g, '');
+          return !d || d.startsWith('120363') || d.length > 15 || d.length < 8;
         }
         return false;
       }).delete();
 
       count += await db.chatMessages.filter(m => {
-        const d = m.phone.replace(/\D/g, '');
-        return d.startsWith('120363') || d.length > 15 || d.length < 8;
+        if (!m) return false;
+        const d = String(m.phone || '').replace(/\D/g, '');
+        return !d || d.startsWith('120363') || d.length > 15 || d.length < 8;
       }).delete();
     } catch (err) {
       console.warn('Erro ao purgar chats inválidos:', err);

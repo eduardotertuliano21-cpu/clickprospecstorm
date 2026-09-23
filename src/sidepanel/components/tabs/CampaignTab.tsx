@@ -1264,54 +1264,49 @@ export const CampaignTab: React.FC<CampaignTabProps> = ({ selectedLeadIds, onCle
                   return (
                     <div
                       key={lead.id}
-                      className={`p-2.5 rounded-xl border transition-all flex items-start justify-between gap-2.5 ${
+                      className={`p-2 rounded-lg border transition-all flex items-center justify-between gap-2 ${
                         isChecked
                           ? 'bg-slate-950/90 border-slate-700/80 hover:border-emerald-500/40'
                           : 'bg-slate-950/30 border-slate-800/50 opacity-60 hover:opacity-100'
                       }`}
                     >
-                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <input
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => lead.id && handleToggleLead(lead.id)}
-                          className="mt-1 rounded border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer"
+                          className="rounded border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer shrink-0"
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-slate-200 truncate">
                               {lead.companyName || lead.name}
                             </span>
+                            {lead.decisionMaker && (
+                              <span className="text-[10px] text-slate-400 truncate">
+                                ({lead.decisionMaker})
+                              </span>
+                            )}
                           </div>
-                          {lead.decisionMaker && (
-                            <div className="text-[11px] text-slate-400 truncate">
-                              👤 {lead.decisionMaker}
-                            </div>
-                          )}
-                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                            {lead.category && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-medium truncate max-w-[130px]">
-                                🏷️ {lead.category}
-                              </span>
-                            )}
-                            {lead.city && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium truncate max-w-[130px]">
-                                📍 {lead.city}
-                              </span>
-                            )}
+                          <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
                             {selectedChannel === 'whatsapp' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/50 text-emerald-400 border border-emerald-500/20 font-mono">
+                              <span className="text-emerald-400 font-mono">
                                 🟢 {lead.phone}
                               </span>
                             )}
                             {selectedChannel === 'email' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-950/50 text-sky-300 border border-sky-500/20 font-mono truncate max-w-[140px]">
+                              <span className="text-sky-300 font-mono truncate max-w-[140px]">
                                 ✉️ {lead.email}
                               </span>
                             )}
                             {selectedChannel === 'instagram' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-950/50 text-pink-300 border border-pink-500/20 font-mono truncate max-w-[130px]">
+                              <span className="text-pink-300 font-mono truncate max-w-[130px]">
                                 📸 {lead.name}
+                              </span>
+                            )}
+                            {lead.city && (
+                              <span className="text-slate-500 truncate max-w-[120px]">
+                                • {lead.city}
                               </span>
                             )}
                           </div>
@@ -1323,7 +1318,7 @@ export const CampaignTab: React.FC<CampaignTabProps> = ({ selectedLeadIds, onCle
                         <button
                           type="button"
                           onClick={() => handleOpenIndividualPreview(lead)}
-                          className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 transition-colors shrink-0"
+                          className="p-1 rounded-md bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 transition-colors shrink-0"
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>

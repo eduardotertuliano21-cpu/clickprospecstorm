@@ -12,7 +12,12 @@ import {
   Building2,
   Monitor,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  Users,
+  MessageSquare,
+  Send,
+  Bot,
+  Settings
 } from 'lucide-react';
 import { campaignRepository } from '../../db/repositories/campaignRepository';
 import { settingsRepository } from '../../db/repositories/settingsRepository';
@@ -23,7 +28,21 @@ import { LogViewerModal } from './LogViewerModal';
 import logoImg from '../../assets/logo.png';
 import { useAdminStore } from '../stores/useAdminStore';
 
-export const Header: React.FC = () => {
+export interface HeaderProps {
+  activeTab: 'crm' | 'chat' | 'campaign' | 'autoresponder' | 'settings';
+  setActiveTab: (tab: 'crm' | 'chat' | 'campaign' | 'autoresponder' | 'settings') => void;
+  isExpiringSoon?: boolean;
+  daysRemaining?: number | null;
+  customerName?: string;
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  activeTab,
+  setActiveTab,
+  isExpiringSoon,
+  daysRemaining,
+  customerName
+}) => {
   const { isAdmin, isEmergencyBypassed, emergencyLock } = useAdminStore();
   const [stationLicense, setStationLicense] = useState<any>(null);
   const [isWppReady, setIsWppReady] = useState<boolean>(false);
@@ -169,182 +188,220 @@ export const Header: React.FC = () => {
 
   return (
     <>
-      <header className="bg-slate-900/95 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between select-none">
-        <div className="flex items-center gap-3.5">
-          <div className="h-12 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800/80 flex items-center justify-center shadow-lg shadow-emerald-500/10 shrink-0">
-            <img src={logoImg} alt="Click Lead Storm Logo" className="h-full w-auto max-h-9 object-contain" />
-          </div>
-          <div>
-            <h1 className="text-sm font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent flex items-center gap-1.5">
-              CLICK LEAD STORM
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                {isElectron ? 'Desktop Baileys' : 'Chrome Extension'}
-              </span>
-              {isEmergencyBypassed ? (
-                <button
-                  type="button"
-                  onClick={emergencyLock}
-                  className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1.5 hover:bg-amber-500/30 transition shadow-sm cursor-pointer"
-                  title="Desbloqueio Mestre Temporário Ativo. Clique para bloquear o sistema imediatamente."
-                >
-                  <span>👑 Mestre</span>
-                  <span className="text-rose-400 font-extrabold hover:underline">🔒 Bloquear</span>
-                </button>
-              ) : isAdmin ? (
-                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold flex items-center gap-1">
-                  👑 Mestre
+      <header className="h-14 bg-slate-900/95 backdrop-blur-md border-b border-slate-800/90 px-3 flex items-center justify-between select-none shrink-0 z-30">
+        {/* Lado Esquerdo: Logo, Marca e Abas de Navegação Integradas */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 pr-2 border-r border-slate-800">
+            <img src={logoImg} alt="Click Lead Storm" className="h-7 w-auto object-contain" />
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent">
+                  CLICK LEAD STORM
                 </span>
-              ) : null}
-            </h1>
-            <p className="text-[11px] text-slate-400">Prospect & CRM B2B Local com IA</p>
+                {isEmergencyBypassed ? (
+                  <button
+                    type="button"
+                    onClick={emergencyLock}
+                    className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1 hover:bg-amber-500/30 transition cursor-pointer"
+                    title="Desbloqueio Mestre Ativo. Clique para bloquear."
+                  >
+                    <span>👑 Mestre</span>
+                    <span className="text-rose-400 font-extrabold">🔒</span>
+                  </button>
+                ) : isAdmin ? (
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold">
+                    👑
+                  </span>
+                ) : null}
+              </div>
+              <span className="text-[9px] text-slate-500 leading-none">B2B Prospect & CRM</span>
+            </div>
           </div>
+
+          {/* Abas de Navegação Compactas e Diretas */}
+          <nav className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800/70">
+            <button
+              onClick={() => setActiveTab('crm')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'crm'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+              title="Visualizar e gerenciar clientes, importar e buscar no Google Maps (Alt+1)"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Contatos</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'chat'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+              title="Ver e responder mensagens recebidas no WhatsApp ao vivo (Alt+2)"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Conversas</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('campaign')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'campaign'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+              title="Disparar mensagens em massa personalizadas com IA (Alt+3)"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Disparos</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('autoresponder')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'autoresponder'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+              title="Robô de atendimento automático com IA 24 horas (Alt+4)"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>Robô IA</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'settings'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+              title="Configurações da empresa, limites e canais (Alt+5)"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Ajustes</span>
+            </button>
+          </nav>
         </div>
 
-        {/* Identificação da Estação e Cliente Conectado */}
-        {stationLicense && (() => {
-          const daysRemaining = stationLicense.expiresAt 
-            ? Math.ceil((new Date(stationLicense.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-            : null;
-          const isExpiringSoon = daysRemaining !== null && daysRemaining > 0 && daysRemaining <= 5 && (stationLicense.status === 'active' || stationLicense.status === 'trial');
-
-          return (
-            <div 
-              className="hidden lg:flex items-center gap-2 bg-slate-950/90 border border-slate-800/90 px-3 py-1.5 rounded-xl text-[11px] font-mono shadow-sm cursor-help"
-              title={`IDENTIFICAÇÃO DESTA ESTAÇÃO:\nEmpresa / Cliente: ${stationLicense.customerName || (stationLicense.isTrial ? 'Demonstração (Trial)' : 'Cliente Local')}\nComputador: ${stationLicense.hostname || 'DESKTOP-CLIENT'}\nID Hardware: ${stationLicense.machineId}\nStatus: ${stationLicense.status === 'active' ? 'Ativo / Licenciado' : stationLicense.status}\nValidade: ${stationLicense.expiresAt ? new Date(stationLicense.expiresAt).toLocaleDateString('pt-BR') : 'Vitalício'}`}
+        {/* Lado Direito: Aviso Expiração + Cota + WhatsApp + Logs + Janela */}
+        <div className="flex items-center gap-2.5">
+          {/* Badge de Expiração Sutil (se faltar 5 dias ou menos) */}
+          {isExpiringSoon && (
+            <button
+              type="button"
+              onClick={() => window.open(`https://wa.me/5511996773805?text=${encodeURIComponent(`Olá Eduardo! Minha licença do Click Lead Storm (${customerName || 'Estação'}) expira em ${daysRemaining} dias e gostaria de renovar.`)}`, '_blank')}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold hover:bg-amber-500/30 transition animate-pulse"
+              title="Sua licença está próxima do vencimento. Clique para falar com o suporte e renovar."
             >
-              <div className="flex items-center gap-1.5 text-emerald-400 font-semibold truncate max-w-[170px]">
-                <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="truncate">{stationLicense.customerName || (stationLicense.isTrial ? 'Modo Demonstração' : 'Cliente Conectado')}</span>
-              </div>
-              <span className="text-slate-700 font-sans">|</span>
-              <div className="flex items-center gap-1 text-slate-300 truncate max-w-[130px]">
-                <Monitor className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                <span className="truncate text-slate-200">{stationLicense.hostname || 'PC-Local'}</span>
-              </div>
-              {isExpiringSoon && (
-                <>
-                  <span className="text-slate-700 font-sans">|</span>
-                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse">
-                    <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
-                    <span>Vence em {daysRemaining}d</span>
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })()}
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Vence em {daysRemaining}d</span>
+            </button>
+          )}
 
-        <div className="flex items-center gap-3">
-          {/* Contador Diário Amigável */}
-          <div className="hidden sm:flex flex-col items-end text-right px-2.5 py-1 bg-slate-950/60 rounded-xl border border-slate-800/80">
-            <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Envios Disponíveis Hoje</span>
-            <div className="text-xs font-bold text-slate-100 flex items-center gap-1">
-              <span className={sentToday >= dailyQuota ? 'text-rose-400' : 'text-emerald-400'}>{sentToday}</span>
-              <span className="text-slate-500">/</span>
-              <span className="text-slate-300">{dailyQuota >= 99999 ? 'Ilimitado' : dailyQuota}</span>
-            </div>
+          {/* Cota Diária Limpa */}
+          <div 
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-slate-950/70 rounded-lg border border-slate-800/70 text-xs font-mono"
+            title={`Envios de hoje: ${sentToday} de ${dailyQuota >= 99999 ? 'Ilimitado' : dailyQuota}`}
+          >
+            <span className="text-[10px] uppercase font-sans text-slate-400">Hoje:</span>
+            <span className={`font-bold ${sentToday >= dailyQuota ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {sentToday}
+            </span>
+            <span className="text-slate-600">/</span>
+            <span className="text-slate-400">{dailyQuota >= 99999 ? '∞' : dailyQuota}</span>
           </div>
 
-          {/* Status de Conexão WhatsApp - Chamada Clara e Intuitiva */}
+          {/* Status WhatsApp */}
           {isElectron ? (
             <button
               onClick={handleStatusClick}
               title={
                 waStatus === 'connected'
-                  ? `WhatsApp Conectado com sucesso (${connectedPhone || 'Sessão Ativa'}). Clique para gerenciar ou desconectar.`
-                  : 'Clique aqui para escanear o QR Code no seu WhatsApp e conectar o sistema'
+                  ? `WhatsApp Conectado (${connectedPhone || 'Ativo'}). Clique para gerenciar.`
+                  : 'Clique para escanear o QR Code no seu WhatsApp'
               }
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all shadow-md active:scale-95 ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${
                 waStatus === 'connected'
-                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900/90 shadow-emerald-500/10'
+                  ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900/80'
                   : waStatus === 'connecting'
-                  ? 'bg-amber-950/80 text-amber-300 border-amber-500/50 hover:bg-amber-900/80'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-emerald-600/30 animate-pulse'
+                  ? 'bg-amber-950/70 text-amber-300 border-amber-500/50 hover:bg-amber-900/70'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-sm animate-pulse'
               }`}
             >
               {waStatus === 'connected' ? (
                 <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                  <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="truncate max-w-[150px]">{connectedPhone || 'WhatsApp Conectado'}</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <Smartphone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="max-w-[120px] truncate">{connectedPhone || 'Conectado'}</span>
                 </>
               ) : waStatus === 'connecting' ? (
                 <>
-                  <RefreshCw className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
-                  <span>Conectando WhatsApp...</span>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+                  <span>Conectando...</span>
                 </>
               ) : (
                 <>
-                  <QrCode className="w-4 h-4 text-white shrink-0" />
-                  <span>📲 Conectar WhatsApp Agora</span>
+                  <QrCode className="w-3.5 h-3.5 text-white shrink-0" />
+                  <span>Conectar WhatsApp</span>
                 </>
               )}
             </button>
           ) : (
             <button
               onClick={handleStatusClick}
-              title={isWppReady ? 'WhatsApp Web Conectado e Pronto' : 'Clique para verificar conexão'}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium border transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
                 isWppReady
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
               }`}
             >
-              {isWppReady ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <Wifi className="w-3.5 h-3.5" />
-                  <span>Conectado</span>
-                </>
-              ) : (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-amber-400" />
-                  <WifiOff className="w-3.5 h-3.5" />
-                  <span>Abrir WhatsApp Web</span>
-                </>
-              )}
-              <RefreshCw className={`w-3 h-3 ml-0.5 opacity-60 ${checking ? 'animate-spin' : ''}`} />
+              <span className={`w-2 h-2 rounded-full ${isWppReady ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span>{isWppReady ? 'Web Pronto' : 'Abrir Web'}</span>
             </button>
           )}
 
-          {/* Botão de Diagnóstico e Logs */}
+          {/* Botão Logs */}
           <button
             onClick={() => {
               setLogsModalOpen(true);
               setHasNewError(false);
             }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
               hasNewError
-                ? 'bg-red-500/20 text-red-300 border-red-500/40 hover:bg-red-500/30 animate-pulse shadow-sm shadow-red-500/20'
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
                 : 'bg-slate-800 text-slate-300 border-slate-700/80 hover:bg-slate-700 hover:text-white'
             }`}
-            title="Visualizar logs do sistema e diagnósticos em tempo real"
+            title="Visualizar logs e diagnósticos"
           >
-            <Terminal className={`w-3.5 h-3.5 ${hasNewError ? 'text-red-400' : 'text-slate-400'}`} />
+            <Terminal className={`w-3.5 h-3.5 ${hasNewError ? 'text-rose-400' : 'text-slate-400'}`} />
             <span>Logs</span>
-            {hasNewError && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />}
+            {hasNewError && <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />}
           </button>
 
-          {/* Controles de Janela do Electron se em modo Desktop */}
+          {/* Controles de Janela Electron */}
           {isElectron && (window as any).electronAPI && (
-            <div className="flex items-center gap-1 ml-2 border-l border-slate-800 pl-3">
+            <div className="flex items-center gap-0.5 ml-1 border-l border-slate-800 pl-2">
               <button
                 onClick={() => (window as any).electronAPI?.minimize()}
-                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded"
+                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded transition"
                 title="Minimizar"
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => (window as any).electronAPI?.maximize()}
-                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded"
+                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded transition"
                 title="Maximizar"
               >
-                <Square className="w-3.5 h-3.5" />
+                <Square className="w-3 h-3" />
               </button>
               <button
                 onClick={() => (window as any).electronAPI?.close()}
-                className="p-1 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 rounded"
+                className="p-1 hover:bg-rose-600 text-slate-400 hover:text-white rounded transition"
                 title="Fechar"
               >
                 <X className="w-3.5 h-3.5" />

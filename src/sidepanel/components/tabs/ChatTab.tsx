@@ -3,6 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { leadRepository } from '../../../db/repositories/leadRepository';
 import { omnichannelRepository, type UnifiedConversationSummary } from '../../../db/repositories/omnichannelRepository';
 import { omnichannelService } from '../../../services/omnichannelService';
+import { settingsRepository } from '../../../db/repositories/settingsRepository';
+import { groqService } from '../../../services/groqService';
 import { webviewBridge } from '../../../services/webviewBridge';
 import type { ChannelType, UnifiedMessage } from '../../../types/omnichannel';
 import { 
@@ -22,7 +24,15 @@ import {
   Inbox,
   Copy,
   Trash2,
-  ExternalLink
+  ExternalLink,
+  Image as ImageIcon,
+  Smile,
+  Mic,
+  Video,
+  FileText,
+  Wand2,
+  Loader2,
+  Smartphone
 } from 'lucide-react';
 import { ContextMenu, type ContextMenuItem } from '../ContextMenu';
 import { Tooltip } from '../Tooltip';
@@ -48,6 +58,96 @@ const CHANNEL_CONFIG: Record<ChannelType, { label: string; icon: React.FC<{ clas
   messenger: { label: 'Messenger', icon: MessageCircle, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
   linkedin: { label: 'LinkedIn', icon: LinkedinIcon, color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' }
 };
+
+/**
+ * Formata os identificadores de contato de forma amigável conforme a rede social
+ */
+function formatContactDetails(contactId: string, channel: ChannelType, name?: string, company?: string) {
+  if (channel === 'whatsapp') {
+    let formattedPhone = contactId;
+    const digits = contactId.replace(/\D/g, '');
+    if (digits.length === 13 && digits.startsWith('55')) {
+      formattedPhone = `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
+    } else if (digits.length === 12 && digits.startsWith('55')) {
+      formattedPhone = `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 8)}-${digits.slice(8)}`;
+    } else if (digits.length >= 10) {
+      formattedPhone = `+${digits}`;
+    }
+    return {
+      title: name || company || formattedPhone,
+      subtitle: (name || company) ? formattedPhone : 'WhatsApp',
+      displayId: formattedPhone
+    };
+  }
+  if (channel === 'instagram') {
+    const handle = contactId.startsWith('@') ? contactId : `@${contactId}`;
+    return {
+      title: name || company || handle,
+      subtitle: (name || company) ? handle : 'Instagram Direct',
+      displayId: handle
+    };
+  }
+  if (channel === 'email') {
+    return {
+      title: name || company || contactId,
+      subtitle: (name || company) ? contactId : 'E-mail',
+      displayId: contactId
+    };
+  }
+  return {
+    title: name || company || contactId,
+    subtitle: contactId,
+    displayId: contactId
+  };
+}
+
+/**
+ * Renderiza o conteúdo da mensagem formatando mídias (áudio, figurinhas, imagens)
+ */
+function renderMessageText(content: string) {
+  if (content === '[Imagem]') {
+    return (
+      <span className="flex items-center gap-1.5 py-0.5 text-emerald-300 font-medium">
+        <ImageIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+        <span>📷 Imagem recebida</span>
+      </span>
+    );
+  }
+  if (content === '[Figurinha]') {
+    return (
+      <span className="flex items-center gap-1.5 py-0.5 text-amber-300 font-medium">
+        <Smile className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+        <span>🎨 Figurinha</span>
+      </span>
+    );
+  }
+  if (content === '[Áudio]') {
+    return (
+      <span className="flex items-center gap-1.5 py-0.5 text-blue-300 font-medium">
+        <Mic className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+        <span>🎵 Mensagem de Áudio</span>
+      </span>
+    );
+  }
+  if (content === '[Vídeo]') {
+    return (
+      <span className="flex items-center gap-1.5 py-0.5 text-purple-300 font-medium">
+        <Video className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+        <span>🎥 Vídeo</span>
+      </span>
+    );
+  }
+  if (content.startsWith('[Arquivo:')) {
+    const filename = content.replace(/^\[Arquivo:\s*/, '').replace(/\]$/, '');
+    return (
+      <span className="flex items-center gap-1.5 py-0.5 text-sky-300 font-medium">
+        <FileText className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+        <span>📄 {filename}</span>
+      </span>
+    );
+  }
+  return <p className="whitespace-pre-wrap leading-relaxed text-xs">{content}</p>;
+}
 
 export const ChatTab: React.FC = () => {
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
@@ -137,6 +237,75 @@ export const ChatTab: React.FC = () => {
       setActiveChannel(conversations[0].channel);
     }
   }, [conversations, selectedContactId]);
+
+  const [isGeneratingAiReply, setIsGeneratingAiReply] = useState(false);
+
+  // Limpa automaticamente do banco local qualquer resíduo de newsletters e grupos antigos
+  useEffect(() => {
+    omnichannelRepository.purgeInvalidChats();
+  }, []);
+
+  const handleDeleteConversation = async (contactId: string, channel?: ChannelType) => {
+    if (!confirm(`Deseja apagar o histórico de mensagens com este contato?`)) return;
+    try {
+      await omnichannelRepository.deleteConversation(contactId, channel);
+      if (selectedContactId === contactId) {
+        setSelectedContactId(null);
+      }
+      showToast('🗑️ Conversa excluída com sucesso');
+    } catch (err: any) {
+      alert(`Erro ao excluir conversa: ${err.message}`);
+    }
+  };
+
+  const handleGenerateAiReply = async () => {
+    if (!activeConv || isGeneratingAiReply) return;
+    
+    // Busca a última mensagem recebida do cliente
+    const lastIncoming = [...activeMessages].reverse().find(m => m.direction === 'incoming');
+    if (!lastIncoming) {
+      showToast('⚠️ Nenhuma mensagem recebida do cliente para responder');
+      return;
+    }
+
+    setIsGeneratingAiReply(true);
+    try {
+      const settings = await settingsRepository.getSettings();
+      const suggested = await groqService.generateAutoReply({
+        incomingMessage: lastIncoming.content,
+        leadContext: {
+          name: selectedLead?.name || activeConv.contactName,
+          companyName: selectedLead?.companyName || activeConv.companyName,
+          decisionMaker: selectedLead?.decisionMaker,
+          niche: selectedLead?.category,
+          city: selectedLead?.city,
+          state: selectedLead?.state,
+          notes: selectedLead?.notes
+        },
+        myCompanyContext: {
+          name: settings.myCompanyName,
+          description: settings.myCompanyDescription,
+          offer: settings.myCompanyOffer
+        },
+        chatHistory: activeMessages.slice(-6).map(m => ({
+          fromMe: m.direction === 'outgoing',
+          body: m.content
+        })),
+        systemPrompt: settings.customSalesPrompt,
+        apiKey: settings.groqApiKey,
+        model: settings.groqModel
+      });
+
+      if (suggested) {
+        setInputText(suggested);
+        showToast('✨ Resposta com IA sugerida! Revise e envie.');
+      }
+    } catch (err: any) {
+      showToast(`Erro na IA: ${err?.message || 'Falha ao sugerir resposta'}`);
+    } finally {
+      setIsGeneratingAiReply(false);
+    }
+  };
 
   // Quando o usuário troca de conversa, ajusta o canal padrão de resposta para o canal da conversa
   const handleSelectConversation = (conv: UnifiedConversationSummary) => {
@@ -325,41 +494,79 @@ export const ChatTab: React.FC = () => {
             />
           </div>
 
-          {/* FILTROS POR CANAL (PILLS) */}
-          <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[11px]">
-            <Tooltip text="Exibir conversas de todos os canais integrados">
-              <button
-                onClick={() => setChannelFilter('all')}
-                className={`px-2.5 py-0.5 rounded-full border whitespace-nowrap transition-colors ${
-                  channelFilter === 'all'
-                    ? 'bg-emerald-600 border-emerald-500 text-white font-semibold'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Todos ({conversations.length})
-              </button>
-            </Tooltip>
-            {(['whatsapp', 'email', 'instagram', 'messenger'] as ChannelType[]).map((ch) => {
-              const cfg = CHANNEL_CONFIG[ch];
-              const Icon = cfg.icon;
-              const count = conversations.filter(c => c.channel === ch).length;
-              return (
-                <Tooltip key={ch} text={`Filtrar apenas mensagens do ${cfg.label}`}>
-                  <button
-                    onClick={() => setChannelFilter(ch)}
-                    className={`px-2 py-0.5 rounded-full border whitespace-nowrap flex items-center gap-1 transition-colors ${
-                      channelFilter === ch
-                        ? `${cfg.bg} ${cfg.border} ${cfg.color} font-semibold`
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <Icon className="w-3 h-3" />
-                    <span>{cfg.label}</span>
-                    {count > 0 && <span className="opacity-75">({count})</span>}
-                  </button>
-                </Tooltip>
-              );
-            })}
+          {/* SELETOR DE REDES SOCIAIS (ABAS DEDICADAS) */}
+          <div className="grid grid-cols-4 gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800 text-[11px]">
+            <button
+              onClick={() => setChannelFilter('whatsapp')}
+              className={`py-1.5 px-1 rounded-lg font-bold flex flex-col items-center justify-center gap-0.5 transition-all ${
+                channelFilter === 'whatsapp'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+              title="Filtrar conversas do WhatsApp"
+            >
+              <div className="flex items-center gap-1">
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-[10px]">Whats</span>
+              </div>
+              <span className="text-[9px] opacity-80">
+                {conversations.filter(c => c.channel === 'whatsapp').length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setChannelFilter('instagram')}
+              className={`py-1.5 px-1 rounded-lg font-bold flex flex-col items-center justify-center gap-0.5 transition-all ${
+                channelFilter === 'instagram'
+                  ? 'bg-pink-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+              title="Filtrar conversas do Instagram Direct"
+            >
+              <div className="flex items-center gap-1">
+                <InstagramIcon className="w-3.5 h-3.5 text-pink-400" />
+                <span className="text-[10px]">Insta</span>
+              </div>
+              <span className="text-[9px] opacity-80">
+                {conversations.filter(c => c.channel === 'instagram').length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setChannelFilter('email')}
+              className={`py-1.5 px-1 rounded-lg font-bold flex flex-col items-center justify-center gap-0.5 transition-all ${
+                channelFilter === 'email'
+                  ? 'bg-sky-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+              title="Filtrar conversas de E-mail"
+            >
+              <div className="flex items-center gap-1">
+                <Mail className="w-3.5 h-3.5 text-sky-400" />
+                <span className="text-[10px]">E-mail</span>
+              </div>
+              <span className="text-[9px] opacity-80">
+                {conversations.filter(c => c.channel === 'email').length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setChannelFilter('all')}
+              className={`py-1.5 px-1 rounded-lg font-bold flex flex-col items-center justify-center gap-0.5 transition-all ${
+                channelFilter === 'all'
+                  ? 'bg-slate-800 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+              title="Exibir conversas de todas as redes"
+            >
+              <div className="flex items-center gap-1">
+                <Inbox className="w-3.5 h-3.5 text-slate-300" />
+                <span className="text-[10px]">Todas</span>
+              </div>
+              <span className="text-[9px] opacity-80">
+                {conversations.length}
+              </span>
+            </button>
           </div>
         </div>
 
@@ -375,6 +582,7 @@ export const ChatTab: React.FC = () => {
               const isSelected = selectedContactId === conv.contactId;
               const chConfig = CHANNEL_CONFIG[conv.channel] || CHANNEL_CONFIG.whatsapp;
               const ChannelIcon = chConfig.icon;
+              const details = formatContactDetails(conv.contactId, conv.channel, conv.contactName, conv.companyName);
 
               return (
                 <div
@@ -385,21 +593,21 @@ export const ChatTab: React.FC = () => {
                     setContextMenu({
                       x: e.clientX,
                       y: e.clientY,
-                      title: conv.contactName || conv.companyName || conv.contactId,
-                      subtitle: `${chConfig.label} • ${conv.contactId}`,
+                      title: details.title,
+                      subtitle: `${chConfig.label} • ${details.displayId}`,
                       items: getConvContextMenuItems(conv)
                     });
                   }}
-                  className={`p-3 cursor-pointer transition-colors flex gap-2.5 items-start cursor-context-menu ${
+                  className={`p-2.5 cursor-pointer transition-colors flex gap-2.5 items-start group ${
                     isSelected
-                      ? 'bg-slate-800/80 border-l-2 border-emerald-500'
-                      : 'hover:bg-slate-800/30'
+                      ? 'bg-slate-800/90 border-l-2 border-emerald-500'
+                      : 'hover:bg-slate-800/40'
                   }`}
                 >
                   {/* AVATAR COM ÍCONE DO CANAL */}
                   <div className="relative shrink-0 mt-0.5">
                     <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-bold text-xs">
-                      {conv.contactName ? conv.contactName.charAt(0).toUpperCase() : conv.contactId.charAt(0).toUpperCase()}
+                      {details.title.charAt(0).toUpperCase()}
                     </div>
                     <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border border-slate-900 flex items-center justify-center ${chConfig.bg} ${chConfig.color}`}>
                       <ChannelIcon className="w-2.5 h-2.5" />
@@ -410,11 +618,28 @@ export const ChatTab: React.FC = () => {
                   <div className="flex-1 min-w-0 space-y-0.5">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-xs text-slate-200 truncate">
-                        {conv.contactName || conv.companyName || conv.contactId}
+                        {details.title}
                       </span>
                       <span className="text-[10px] text-slate-500 font-mono shrink-0">
                         {new Date(conv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400 font-mono truncate">
+                        {details.subtitle}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteConversation(conv.contactId, conv.channel);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-rose-400 text-slate-500 transition"
+                        title="Excluir conversa do histórico"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
 
                     {conv.subject && (
@@ -423,9 +648,9 @@ export const ChatTab: React.FC = () => {
                       </p>
                     )}
 
-                    <p className="text-xs text-slate-400 truncate">
-                      {conv.lastMessage}
-                    </p>
+                    <div className="text-xs text-slate-400 truncate">
+                      {renderMessageText(conv.lastMessage)}
+                    </div>
                   </div>
 
                   {/* BADGE NÃO LIDO */}
@@ -446,72 +671,102 @@ export const ChatTab: React.FC = () => {
         <div className="flex-1 flex flex-col bg-slate-950">
           
           {/* CABEÇALHO DO CHAT */}
-          <div className="p-3 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200 font-bold text-sm">
-                {selectedLead?.name ? selectedLead.name.charAt(0).toUpperCase() : selectedContactId.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-bold text-slate-100">
-                    {selectedLead?.name || activeConv?.contactName || selectedContactId}
-                  </h3>
-                  {selectedLead?.companyName && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                      {selectedLead.companyName}
-                    </span>
-                  )}
-                  {activeConv && (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold flex items-center gap-1 ${CHANNEL_CONFIG[activeConv.channel]?.bg} ${CHANNEL_CONFIG[activeConv.channel]?.border} ${CHANNEL_CONFIG[activeConv.channel]?.color}`}>
-                      {React.createElement(CHANNEL_CONFIG[activeConv.channel]?.icon || MessageSquare, { className: 'w-2.5 h-2.5' })}
-                      {CHANNEL_CONFIG[activeConv.channel]?.label}
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400 font-mono">
-                  {selectedContactId} {selectedLead?.decisionMaker ? `• Sócio: ${selectedLead.decisionMaker}` : ''}
-                </p>
-              </div>
-            </div>
+          <div className="p-3 border-b border-slate-800 bg-slate-900/70 flex items-center justify-between">
+            {(() => {
+              const activeDetails = formatContactDetails(
+                selectedContactId,
+                activeConv?.channel || activeChannel,
+                selectedLead?.name || activeConv?.contactName,
+                selectedLead?.companyName || activeConv?.companyName
+              );
+              const chConfig = CHANNEL_CONFIG[activeConv?.channel || activeChannel] || CHANNEL_CONFIG.whatsapp;
 
-            {/* SELETOR / TRAVA DO CANAL DE RESPOSTA */}
-            {activeConv && ['instagram', 'messenger', 'email'].includes(activeConv.channel) ? (
-              <Tooltip text="Canal vinculado automaticamente à mensagem de origem para evitar cruzamento de redes">
-                <div className="flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 shadow-sm cursor-help">
-                  <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
-                    🔒 Canal Travado:
-                  </span>
-                  <span className={`text-[10px] px-2.5 py-0.5 rounded-md border font-bold flex items-center gap-1.5 ${CHANNEL_CONFIG[activeConv.channel]?.bg} ${CHANNEL_CONFIG[activeConv.channel]?.border} ${CHANNEL_CONFIG[activeConv.channel]?.color}`}>
-                    {React.createElement(CHANNEL_CONFIG[activeConv.channel]?.icon || MessageSquare, { className: 'w-3 h-3' })}
-                    {CHANNEL_CONFIG[activeConv.channel]?.label}
-                  </span>
-                </div>
-              </Tooltip>
-            ) : (
-              <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800">
-                <span className="text-[10px] text-slate-400 px-1 font-semibold">Responder via:</span>
-                {(['whatsapp', 'email', 'instagram', 'messenger'] as ChannelType[]).map((ch) => {
-                  const cfg = CHANNEL_CONFIG[ch];
-                  const Icon = cfg.icon;
-                  const isActive = activeChannel === ch;
-                  return (
-                    <Tooltip key={ch} text={`Enviar resposta via ${cfg.label}`}>
+              return (
+                <>
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200 font-bold text-sm">
+                      {activeDetails.title.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xs font-bold text-slate-100">
+                          {activeDetails.title}
+                        </h3>
+                        {selectedLead?.companyName && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                            {selectedLead.companyName}
+                          </span>
+                        )}
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold flex items-center gap-1 ${chConfig.bg} ${chConfig.border} ${chConfig.color}`}>
+                          {React.createElement(chConfig.icon || MessageSquare, { className: 'w-2.5 h-2.5' })}
+                          {chConfig.label}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        {activeDetails.displayId} {selectedLead?.decisionMaker ? `• Sócio: ${selectedLead.decisionMaker}` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* AÇÕES RÁPIDAS DA REDE SOCIAL (FIM DA MISTURA) */}
+                  <div className="flex items-center gap-2">
+                    {activeConv?.channel === 'whatsapp' && (
                       <button
-                        onClick={() => setActiveChannel(ch)}
-                        className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
-                          isActive
-                            ? `${cfg.bg} ${cfg.color} border border-current shadow-sm`
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                        type="button"
+                        onClick={() => {
+                          const clean = selectedContactId.replace(/\D/g, '');
+                          window.open(`https://web.whatsapp.com/send?phone=${clean}`, '_blank');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-emerald-400 border border-slate-700 transition text-xs flex items-center gap-1"
+                        title="Abrir no WhatsApp Web"
                       >
-                        <Icon className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline text-[10px]">{cfg.label}</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline text-[11px]">Abrir Web</span>
                       </button>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-            )}
+                    )}
+
+                    {activeConv?.channel === 'instagram' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const handle = selectedContactId.replace(/^@/, '');
+                          window.open(`https://instagram.com/${handle}`, '_blank');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-pink-400 border border-slate-700 transition text-xs flex items-center gap-1"
+                        title="Ver perfil no Instagram"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline text-[11px]">Ver Perfil</span>
+                      </button>
+                    )}
+
+                    {activeConv?.channel === 'email' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.open(`mailto:${selectedContactId}`, '_blank');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-sky-400 border border-slate-700 transition text-xs flex items-center gap-1"
+                        title="Abrir no cliente de e-mail padrão"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline text-[11px]">Cliente E-mail</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteConversation(selectedContactId, activeConv?.channel)}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 transition text-xs flex items-center gap-1"
+                      title="Excluir esta conversa do histórico local"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline text-[11px]">Excluir</span>
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* HISTÓRICO DE MENSAGENS */}
@@ -569,10 +824,8 @@ export const ChatTab: React.FC = () => {
                         </div>
                       )}
 
-                      {/* CONTEÚDO DA MENSAGEM */}
-                      <p className="whitespace-pre-wrap leading-relaxed text-xs">
-                        {msg.content}
-                      </p>
+                      {/* CONTEÚDO DA MENSAGEM COM SUPORTE A MÍDIAS */}
+                      {renderMessageText(msg.content)}
 
                       {/* STATUS DE ENVIO */}
                       {isMe && (
@@ -589,8 +842,35 @@ export const ChatTab: React.FC = () => {
           </div>
 
           {/* FORMULÁRIO DE ENVIO */}
-          <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-800 bg-slate-900/40 space-y-2">
+          <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-800 bg-slate-900/60 space-y-2">
             
+            {/* BARRA SUPERIOR DE AÇÕES RÁPIDAS: IA E IDENTIFICAÇÃO DO CANAL */}
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={isGeneratingAiReply || activeMessages.length === 0}
+                onClick={handleGenerateAiReply}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 text-xs font-semibold transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                title="A IA analisa a conversa e sugere uma resposta persuasiva e personalizada"
+              >
+                {isGeneratingAiReply ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" />
+                    <span>Gerando sugestão de resposta...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+                    <span>✨ Sugerir Resposta com IA</span>
+                  </>
+                )}
+              </button>
+
+              <span className="text-[11px] text-slate-400 font-mono">
+                Enviando via: <strong className={CHANNEL_CONFIG[activeChannel]?.color}>{CHANNEL_CONFIG[activeChannel]?.label}</strong>
+              </span>
+            </div>
+
             {/* SE O CANAL FOR E-MAIL: EXIBE CAMPO DE ASSUNTO */}
             {activeChannel === 'email' && (
               <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5">
@@ -599,13 +879,13 @@ export const ChatTab: React.FC = () => {
                   type="text"
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
-                  placeholder="Ex: Proposta Comercial / Reunião de Apresentação"
+                  placeholder="Ex: Re: Oportunidade Comercial"
                   className="flex-1 bg-transparent text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
                 />
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-end">
               <textarea
                 rows={2}
                 value={inputText}
@@ -616,20 +896,36 @@ export const ChatTab: React.FC = () => {
                     handleSendMessage();
                   }
                 }}
-                placeholder={`Digite sua mensagem para ${activeConv?.contactName || selectedContactId} via ${CHANNEL_CONFIG[activeChannel].label}... (Enter para enviar, Shift+Enter para nova linha)`}
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none"
+                placeholder={
+                  activeChannel === 'whatsapp'
+                    ? `Digite sua mensagem via WhatsApp para ${selectedLead?.name || activeConv?.contactName || selectedContactId}...`
+                    : activeChannel === 'instagram'
+                    ? `Enviar Direct no Instagram para ${activeConv?.contactName || selectedContactId}...`
+                    : `Escreva o corpo do e-mail para ${selectedContactId}...`
+                }
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none leading-relaxed"
               />
 
-              <Tooltip text="Enviar mensagem imediata" shortcut="Enter">
-                <button
-                  type="submit"
-                  disabled={!inputText.trim() || isSending}
-                  className="px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-md flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 h-full"
-                >
+              <button
+                type="submit"
+                disabled={!inputText.trim() || isSending}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold shadow-md flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 h-[46px] shrink-0 ${
+                  activeChannel === 'whatsapp'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
+                    : activeChannel === 'instagram'
+                    ? 'bg-pink-600 hover:bg-pink-500 text-white shadow-pink-600/20'
+                    : 'bg-sky-600 hover:bg-sky-500 text-white shadow-sky-600/20'
+                }`}
+              >
+                {isSending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
                   <Send className="w-4 h-4" />
-                  <span>{isSending ? 'Enviando...' : 'Enviar'}</span>
-                </button>
-              </Tooltip>
+                )}
+                <span>
+                  {isSending ? 'Enviando...' : activeChannel === 'whatsapp' ? 'Enviar WhatsApp' : activeChannel === 'instagram' ? 'Enviar Direct' : 'Enviar E-mail'}
+                </span>
+              </button>
             </div>
           </form>
         </div>

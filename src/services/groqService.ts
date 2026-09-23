@@ -16,6 +16,28 @@ function getFactoryFallbackKeys(): string {
 
 let keyRotationIndex = 0;
 
+export interface AutoResponseParams {
+  incomingMessage: string;
+  myCompanyContext?: {
+    name?: string;
+    description?: string;
+    offer?: string;
+  };
+  leadContext?: {
+    name?: string;
+    companyName?: string;
+    decisionMaker?: string;
+    niche?: string;
+    city?: string;
+    state?: string;
+    notes?: string;
+  };
+  chatHistory?: Array<{ fromMe: boolean; body: string }>;
+  systemPrompt?: string;
+  apiKey: string;
+  model?: string;
+}
+
 export const groqService = {
   /**
    * Extrai e sanitiza a lista de chaves a partir de uma string (separada por vírgula ou quebra de linha)
@@ -321,27 +343,7 @@ DIRETRIZES FUNDAMENTAIS:
    * Gera uma resposta automática inteligente para mensagens recebidas com rotação de chaves,
    * considerando dados completos da Minha Empresa, Empresa do Lead e Histórico de Conversa.
    */
-  async generateAutoResponse(params: {
-    incomingMessage: string;
-    myCompanyContext?: {
-      name?: string;
-      description?: string;
-      offer?: string;
-    };
-    leadContext?: {
-      name?: string;
-      companyName?: string;
-      decisionMaker?: string;
-      niche?: string;
-      city?: string;
-      state?: string;
-      notes?: string;
-    };
-    chatHistory?: Array<{ fromMe: boolean; body: string }>;
-    systemPrompt?: string;
-    apiKey: string;
-    model?: string;
-  }): Promise<string> {
+  async generateAutoResponse(params: AutoResponseParams): Promise<string> {
     const { 
       incomingMessage, 
       myCompanyContext, 
@@ -452,5 +454,12 @@ ${leadContextStr || 'Lead conversando conosco pelo WhatsApp.'}
     const companyName = myCompanyContext?.name || 'nossa equipe';
     const clientTarget = leadContext?.companyName ? `da ${leadContext.companyName}` : 'de vocês';
     return `${contactGreeting} Tudo ótimo por aqui! Sou ${companyName}. Me conta: como podemos colaborar com o crescimento do time ${clientTarget}?`;
+  },
+
+  /**
+   * Alias para generateAutoResponse para compatibilidade em chats omnichannel.
+   */
+  async generateAutoReply(params: AutoResponseParams): Promise<string> {
+    return this.generateAutoResponse(params);
   }
 };

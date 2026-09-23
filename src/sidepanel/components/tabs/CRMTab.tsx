@@ -95,6 +95,7 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedOrigin, setSelectedOrigin] = useState<string>('all');
+  const [selectedChannel, setSelectedChannel] = useState<'all' | 'whatsapp' | 'instagram' | 'email'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
 
@@ -128,11 +129,22 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
     });
   }, [searchTerm, selectedStatus]);
 
-  // Filtro client-side por origem
+  // Filtro client-side por origem e canal de contato
   const leads = (rawLeads || []).filter(lead => {
-    if (selectedOrigin === 'all') return true;
-    const originInfo = getLeadOriginInfo(lead);
-    return originInfo.id === selectedOrigin;
+    if (selectedOrigin !== 'all') {
+      const originInfo = getLeadOriginInfo(lead);
+      if (originInfo.id !== selectedOrigin) return false;
+    }
+    if (selectedChannel === 'whatsapp') {
+      const clean = lead.phone?.replace(/\D/g, '');
+      if (!clean || clean.length < 8 || lead.phone.startsWith('li_')) return false;
+    } else if (selectedChannel === 'instagram') {
+      const hasIg = !!(lead.instagram?.trim() || lead.origin === 'instagram');
+      if (!hasIg) return false;
+    } else if (selectedChannel === 'email') {
+      if (!lead.email || !lead.email.includes('@')) return false;
+    }
+    return true;
   });
 
   // Estatísticas de origens
@@ -143,6 +155,14 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
   const csvCount = (rawLeads || []).filter(l => getLeadOriginInfo(l).id === 'csv').length;
   const linkedinCount = (rawLeads || []).filter(l => getLeadOriginInfo(l).id === 'linkedin').length;
 
+  // Estatísticas de canais
+  const whatsappCount = (rawLeads || []).filter(l => {
+    const clean = l.phone?.replace(/\D/g, '');
+    return clean && clean.length >= 8 && !l.phone.startsWith('li_');
+  }).length;
+  const instagramCount = (rawLeads || []).filter(l => !!(l.instagram?.trim() || l.origin === 'instagram')).length;
+  const emailCount = (rawLeads || []).filter(l => !!(l.email && l.email.includes('@'))).length;
+
   // Abrir modal de edição
   const handleOpenEdit = (lead: Lead) => {
     setEditingLead(lead);
@@ -151,6 +171,7 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
       companyName: lead.companyName || '',
       phone: lead.phone || '',
       email: lead.email || '',
+      instagram: lead.instagram || '',
       cnpj: lead.cnpj || '',
       city: lead.city || '',
       category: lead.category || '',
@@ -454,13 +475,28 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
       label: `Copiar E-mail: ${lead.email}`,
       icon: <Mail className="w-3.5 h-3.5 text-slate-400" />,
       onClick: () => copyToClipboard(lead.email!, 'E-mail')
+    },
+    {
+      id: 'send-email',
+      label: `Enviar E-mail (${lead.email})`,
+      icon: <span className="text-sky-400 text-xs">✉️</span>,
+      onClick: () => window.open(`mailto:${lead.email}`, '_blank')
+    }] : []),
+    ...(lead.instagram ? [{
+      id: 'open-instagram',
+      label: `Abrir Instagram (@${lead.instagram.replace('@', '')})`,
+      icon: <span className="text-pink-400 text-xs">📸</span>,
+      onClick: () => {
+        const handle = lead.instagram!.replace('@', '').trim();
+        window.open(`https://instagram.com/${handle}`, '_blank');
+      }
     }] : []),
     {
       id: 'copy-all',
       label: 'Copiar Ficha Completa',
       icon: <Copy className="w-3.5 h-3.5 text-slate-400" />,
       onClick: () => {
-        const fullData = `Empresa: ${lead.companyName || lead.name}\nDecisor: ${lead.decisionMaker || 'N/A'}\nTelefone: ${lead.phone}\nE-mail: ${lead.email || 'N/A'}\nCNPJ: ${lead.cnpj || 'N/A'}\nOrigem: ${getLeadOriginInfo(lead).label}\nStatus: ${lead.status}`;
+        const fullData = `Empresa: ${lead.companyName || lead.name}\nDecisor: ${lead.decisionMaker || 'N/A'}\nTelefone: ${lead.phone}\nE-mail: ${lead.email || 'N/A'}\nInstagram: ${lead.instagram || 'N/A'}\nCNPJ: ${lead.cnpj || 'N/A'}\nOrigem: ${getLeadOriginInfo(lead).label}\nStatus: ${lead.status}`;
         copyToClipboard(fullData, 'Ficha completa do lead');
       }
     },
@@ -504,9 +540,9 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
       {/* 1. BARRA SUPERIOR UNIFICADA (LINHA ÚNICA) */}
       <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
         {/* Esquerda: Busca e Filtros Rápidos */}
-        <div className="flex items-center gap-2 flex-1 min-w-[280px]">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
           {/* Input de busca textual */}
-          <div className="relative flex-1 max-w-xs">
+          <div className="relative flex-1 max-w-xs min-w-[180px]">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -515,6 +551,56 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
             />
+          </div>
+
+          {/* Filtro Rápido por Canal de Comunicação */}
+          <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-xs">
+            <button
+              onClick={() => setSelectedChannel('all')}
+              className={`px-2 py-1 rounded-md transition-all font-medium ${
+                selectedChannel === 'all'
+                  ? 'bg-slate-800 text-slate-100 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Todos ({allLeadsCount})
+            </button>
+            <button
+              onClick={() => setSelectedChannel('whatsapp')}
+              className={`px-2 py-1 rounded-md transition-all font-medium flex items-center gap-1 ${
+                selectedChannel === 'whatsapp'
+                  ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-emerald-400'
+              }`}
+              title="Filtrar contatos com WhatsApp válido"
+            >
+              <span>🟢</span>
+              <span>Whats ({whatsappCount})</span>
+            </button>
+            <button
+              onClick={() => setSelectedChannel('instagram')}
+              className={`px-2 py-1 rounded-md transition-all font-medium flex items-center gap-1 ${
+                selectedChannel === 'instagram'
+                  ? 'bg-pink-600/30 text-pink-300 border border-pink-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-pink-400'
+              }`}
+              title="Filtrar contatos com Instagram identificado"
+            >
+              <span>📸</span>
+              <span>Insta ({instagramCount})</span>
+            </button>
+            <button
+              onClick={() => setSelectedChannel('email')}
+              className={`px-2 py-1 rounded-md transition-all font-medium flex items-center gap-1 ${
+                selectedChannel === 'email'
+                  ? 'bg-sky-600/30 text-sky-300 border border-sky-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-sky-400'
+              }`}
+              title="Filtrar contatos com E-mail válido"
+            >
+              <span>✉️</span>
+              <span>E-mail ({emailCount})</span>
+            </button>
           </div>
 
           {/* Dropdown compacto de Origem */}
@@ -786,7 +872,7 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
                 </select>
               </div>
 
-              <div className="col-span-2">
+              <div>
                 <label className="block text-[11px] font-semibold text-slate-400 mb-1">Perfil do LinkedIn (URL)</label>
                 <input
                   type="text"
@@ -795,6 +881,20 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
                   onChange={(e) => setEditForm({ ...editForm, linkedinUrl: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 font-mono text-xs text-slate-100 focus:outline-none focus:border-sky-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">Instagram (@ ou perfil)</label>
+                <div className="relative">
+                  <span className="text-xs text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 font-mono">@</span>
+                  <input
+                    type="text"
+                    placeholder="perfil_empresa"
+                    value={editForm.instagram || ''}
+                    onChange={(e) => setEditForm({ ...editForm, instagram: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-7 pr-2 py-2 font-mono text-xs text-slate-100 focus:outline-none focus:border-pink-500"
+                  />
+                </div>
               </div>
 
               <div className="col-span-2">
@@ -935,23 +1035,28 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
                         </div>
                       </div>
 
-                      {/* Decisor & Telefone & Badge WA */}
+                      {/* Decisor & Telefone & Badges de Canais */}
                       <div className="col-span-3 min-w-0 pr-3 space-y-0.5">
                         <div className="text-xs text-slate-200 font-medium truncate flex items-center gap-1">
                           <User className="w-3 h-3 text-emerald-400 shrink-0" />
                           <span className="truncate">{lead.decisionMaker || lead.name || 'Decisor não localizado'}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-[11px]">
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                           <span className="font-mono text-slate-400">{lead.phone || 'Sem telefone'}</span>
-                          {hasPhone ? (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                          {hasPhone && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" title="WhatsApp Disponível">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                              Tem WA
+                              WA
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                              Sem WA
+                          )}
+                          {lead.instagram && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-pink-500/15 text-pink-300 border border-pink-500/30" title={`Instagram: @${lead.instagram.replace('@', '')}`}>
+                              📸 @{lead.instagram.replace('@', '')}
+                            </span>
+                          )}
+                          {lead.email && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-medium bg-sky-500/15 text-sky-300 border border-sky-500/30" title={`E-mail: ${lead.email}`}>
+                              ✉️ E-mail
                             </span>
                           )}
                         </div>
@@ -976,17 +1081,46 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
                         </select>
                       </div>
 
-                      {/* Ações Rápidas */}
+                      {/* Ações Rápidas por Canal */}
                       <div className="col-span-2 flex items-center justify-end gap-1.5 pr-2">
-                        {/* Botão de WhatsApp Rápido */}
-                        <Tooltip text="Disparar no WhatsApp imediato" shortcut="W">
-                          <button
-                            onClick={() => handleQuickSend(lead)}
-                            className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors shadow-sm"
-                          >
-                            <MessageSquare className="w-3.5 h-3.5" />
-                          </button>
-                        </Tooltip>
+                        {/* Botão de WhatsApp */}
+                        {hasPhone && (
+                          <Tooltip text="Disparar no WhatsApp imediato" shortcut="W">
+                            <button
+                              onClick={() => handleQuickSend(lead)}
+                              className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors shadow-sm"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        )}
+
+                        {/* Botão de Instagram */}
+                        {lead.instagram && (
+                          <Tooltip text={`Abrir perfil no Instagram (@${lead.instagram.replace('@', '')})`}>
+                            <button
+                              onClick={() => {
+                                const handle = lead.instagram!.replace('@', '').trim();
+                                window.open(`https://instagram.com/${handle}`, '_blank');
+                              }}
+                              className="p-1.5 bg-pink-600/80 hover:bg-pink-500 text-white rounded-lg transition-colors shadow-sm"
+                            >
+                              <span className="text-[11px] leading-none">📸</span>
+                            </button>
+                          </Tooltip>
+                        )}
+
+                        {/* Botão de E-mail */}
+                        {lead.email && (
+                          <Tooltip text={`Enviar e-mail para ${lead.email}`}>
+                            <button
+                              onClick={() => window.open(`mailto:${lead.email}`, '_blank')}
+                              className="p-1.5 bg-sky-600/80 hover:bg-sky-500 text-white rounded-lg transition-colors shadow-sm"
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        )}
 
                         {/* Menu de Três Pontinhos (Ações Secundárias) */}
                         <Tooltip text="Mais opções (Buscar Decisores, Enriquecer, Editar, Excluir)">
@@ -1090,6 +1224,31 @@ export const CRMTab: React.FC<CRMTabProps> = ({ onStartCampaignWithLeads }) => {
                             </Tooltip>
                           )}
                         </div>
+
+                        {(lead.instagram || lead.email) && (
+                          <div className="flex flex-wrap items-center gap-1.5 text-[9px] pt-0.5">
+                            {lead.instagram && (
+                              <a
+                                href={`https://instagram.com/${lead.instagram.replace('@', '').trim()}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-pink-400 hover:text-pink-300 font-mono truncate bg-pink-500/10 px-1 py-0.5 rounded border border-pink-500/20"
+                                title={`Instagram: @${lead.instagram.replace('@', '')}`}
+                              >
+                                📸 @{lead.instagram.replace('@', '')}
+                              </a>
+                            )}
+                            {lead.email && (
+                              <a
+                                href={`mailto:${lead.email}`}
+                                className="text-sky-400 hover:text-sky-300 font-mono truncate bg-sky-500/10 px-1 py-0.5 rounded border border-sky-500/20"
+                                title={`E-mail: ${lead.email}`}
+                              >
+                                ✉️ {lead.email}
+                              </a>
+                            )}
+                          </div>
+                        )}
 
                         {lead.notes && (
                           <div className="text-[10px] text-slate-400 bg-slate-900/60 p-1.5 rounded border border-slate-800/80 line-clamp-2 italic">

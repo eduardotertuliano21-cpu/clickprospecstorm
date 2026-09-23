@@ -150,11 +150,12 @@ export const CampaignTab: React.FC<CampaignTabProps> = ({ selectedLeadIds, onCle
   // Leads filtrados para o canal e critérios atuais
   const filteredAudienceLeads = useMemo(() => {
     return rawLeads.filter(lead => {
-      // 1. Validação mínima por canal de envio
+      // 1. Validação estrita por canal de envio
       if (selectedChannel === 'whatsapp') {
-        if (!lead.phone || lead.phone.startsWith('li_')) return false;
+        const clean = lead.phone?.replace(/\D/g, '');
+        if (!clean || clean.length < 8 || lead.phone.startsWith('li_')) return false;
       } else if (selectedChannel === 'instagram') {
-        const hasIg = lead.origin === 'instagram' || lead.notes?.includes('instagram') || lead.phone || lead.name;
+        const hasIg = !!(lead.instagram?.trim() || lead.origin === 'instagram' || lead.notes?.match(/@([a-zA-Z0-9._]+)/));
         if (!hasIg) return false;
       } else if (selectedChannel === 'email') {
         if (!lead.email || !lead.email.includes('@')) return false;
@@ -512,7 +513,7 @@ export const CampaignTab: React.FC<CampaignTabProps> = ({ selectedLeadIds, onCle
             await webviewBridge.sendTextMessage(lead.phone, finalMessage);
           }
         } else if (selectedChannel === 'instagram') {
-          const recipientIg = lead.notes?.match(/@([a-zA-Z0-9._]+)/)?.[1] || lead.phone || lead.name;
+          const recipientIg = lead.instagram?.replace('@', '').trim() || lead.notes?.match(/@([a-zA-Z0-9._]+)/)?.[1] || lead.phone || lead.name;
           setCurrentStatusMsg(`Enviando Direct no Instagram para ${lead.companyName || lead.name} (${recipientIg})...`);
 
           const igRes = await omnichannelService.sendMessage({
@@ -1301,7 +1302,7 @@ export const CampaignTab: React.FC<CampaignTabProps> = ({ selectedLeadIds, onCle
                             )}
                             {selectedChannel === 'instagram' && (
                               <span className="text-pink-300 font-mono truncate max-w-[130px]">
-                                📸 {lead.name}
+                                📸 @{lead.instagram ? lead.instagram.replace('@', '') : lead.name}
                               </span>
                             )}
                             {lead.city && (

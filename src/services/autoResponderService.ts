@@ -150,6 +150,17 @@ class AutoResponderService {
     if (!body || !sender) return;
 
     const cleanSender = channel === 'whatsapp' ? sender.replace(/\D/g, '') : sender.trim().replace(/^@/, '');
+    
+    // Ignora canais de transmissão, newsletters e grupos do WhatsApp
+    if (channel === 'whatsapp') {
+      if (cleanSender.length > 15 || cleanSender.length < 8 || cleanSender.startsWith('120363')) {
+        return;
+      }
+      if (jid && (jid.endsWith('@g.us') || jid.endsWith('@newsletter') || jid.includes('broadcast'))) {
+        return;
+      }
+    }
+
     const text = body.trim();
     const textLower = text.toLowerCase();
     const isFromMe = !!fromMe;

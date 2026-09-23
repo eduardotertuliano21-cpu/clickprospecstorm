@@ -58,6 +58,33 @@ function extractMessageText(message: any): string {
   return '';
 }
 
+/**
+ * Detecta e filtra grupos, canais de transmissão, newsletters e LIDs internos do WhatsApp.
+ * Mantém apenas conversas com números de telefone reais (leads individuais).
+ */
+function isWhatsAppGroupOrNewsletter(jid?: string, rawPhone?: string, participant?: string): boolean {
+  if (participant) return true; // Se tem participant em mensagem recebida, é mensagem de grupo
+  if (!jid) return true;
+
+  const jidLower = jid.toLowerCase();
+  if (
+    jidLower.endsWith('@g.us') ||
+    jidLower.endsWith('@newsletter') ||
+    jidLower.includes('broadcast') ||
+    jidLower.endsWith('@temp')
+  ) {
+    return true;
+  }
+
+  const digits = (rawPhone || jid.split('@')[0].split(':')[0]).replace(/\D/g, '');
+  // Números reais no formato E.164 têm no máximo 15 dígitos.
+  // Canais/Newsletters e Grupos no WhatsApp usam IDs de 16 a 19 dígitos (geralmente iniciando com 120363).
+  if (digits.length > 15 || digits.length < 8) return true;
+  if (digits.startsWith('120363')) return true;
+
+  return false;
+}
+
 class WhatsAppService {
   private sock: WASocket | null = null;
   private mainWindow: BrowserWindow | null = null;
@@ -136,10 +163,11 @@ class WhatsAppService {
           if (Array.isArray(messages)) {
             for (const m of messages) {
               const remoteJid = m.key?.remoteJid || '';
-              if (!remoteJid || remoteJid.endsWith('@g.us') || remoteJid.includes('broadcast')) continue;
-              
+              const participant = m.key?.participant || undefined;
               const cleanPhone = remoteJid.split('@')[0].split(':')[0].replace(/\D/g, '');
-              if (!cleanPhone || cleanPhone.length < 8) continue;
+
+              // Ignora grupos, canais de transmissão, newsletters e contatos inválidos
+              if (isWhatsAppGroupOrNewsletter(remoteJid, cleanPhone, participant)) continue;
 
               const text = extractMessageText(m.message);
               if (text) {
@@ -232,16 +260,16 @@ class WhatsAppService {
       socket.ev.on('messages.upsert', async ({ messages, type }) => {
         for (const msg of messages) {
           const remoteJid = msg.key?.remoteJid || '';
-          // Ignora grupos e status broadcasts
-          if (!remoteJid || remoteJid.endsWith('@g.us') || remoteJid.includes('broadcast')) {
+          const participant = msg.key?.participant || undefined;
+          const cleanFrom = remoteJid.split('@')[0].split(':')[0].replace(/\D/g, '');
+
+          // Ignora grupos, canais de transmissão, newsletters e contatos inválidos
+          if (isWhatsAppGroupOrNewsletter(remoteJid, cleanFrom, participant)) {
             continue;
           }
 
           const body = extractMessageText(msg.message);
           if (!body) continue;
-
-          const cleanFrom = remoteJid.split('@')[0].split(':')[0].replace(/\D/g, '');
-          if (!cleanFrom || cleanFrom.length < 8) continue;
 
           // Mapeia JID e cleanFrom para envio futuro assertivo (suporte total a LID)
           this.jidMap.set(cleanFrom, remoteJid);

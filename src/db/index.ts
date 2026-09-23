@@ -10,6 +10,7 @@ export interface Lead {
   phone: string; // Formato E.164 (ex: 5511999999999) - ÍNDICE ÚNICO
   cnpj?: string;
   email?: string;
+  instagram?: string; // Perfil ou username do Instagram (ex: @empresa)
   address?: string;
   city?: string;
   state?: string;

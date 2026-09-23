@@ -17,7 +17,8 @@ import {
   Filter,
   CheckCheck,
   Briefcase,
-  ExternalLink
+  ExternalLink,
+  Mail
 } from 'lucide-react';
 import { leadRepository } from '../../db/repositories/leadRepository';
 import { cnpjEnrichmentService, type EnrichedCnpjData } from '../../services/cnpjEnrichmentService';
@@ -54,6 +55,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const [mName, setMName] = useState('');
   const [mCompany, setMCompany] = useState('');
   const [mPhone, setMPhone] = useState('');
+  const [mEmail, setMEmail] = useState('');
+  const [mInstagram, setMInstagram] = useState('');
   const [mCnpj, setMCnpj] = useState('');
   const [mCity, setMCity] = useState('');
   const [mCategory, setMCategory] = useState('');
@@ -113,6 +116,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         if (!mDecisionMaker) setMDecisionMaker(data.decisionMaker);
         if (!mName) setMName(data.decisionMaker || data.nomeFantasia);
         if (!mPhone && data.phone) setMPhone(data.phone);
+        if (!mEmail && data.email) setMEmail(data.email);
         if (!mCity && data.city) setMCity(`${data.city}, ${data.state || ''}`);
         if (!mCategory && data.cnaePrincipal) setMCategory(data.cnaePrincipal);
       } else {
@@ -140,6 +144,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         name: mName.trim() || mCompany.trim() || 'Contato',
         companyName: mCompany.trim() || mName.trim() || 'Empresa',
         phone: cleanPhone,
+        email: mEmail.trim() || undefined,
+        instagram: mInstagram.trim() || undefined,
         cnpj: mCnpj.trim() || undefined,
         city: mCity.trim() || undefined,
         category: mCategory.trim() || undefined,
@@ -154,6 +160,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
       setMName('');
       setMCompany('');
       setMPhone('');
+      setMEmail('');
+      setMInstagram('');
       setMCnpj('');
       setMCity('');
       setMCategory('');
@@ -891,6 +899,36 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                       placeholder="Ex: Carlos Silva"
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
                     />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">E-mail Comercial</label>
+                    <div className="relative">
+                      <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="email"
+                        value={mEmail}
+                        onChange={(e) => setMEmail(e.target.value)}
+                        placeholder="contato@empresa.com.br"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">Instagram (@)</label>
+                    <div className="relative">
+                      <span className="text-xs text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 font-mono">@</span>
+                      <input
+                        type="text"
+                        value={mInstagram}
+                        onChange={(e) => setMInstagram(e.target.value)}
+                        placeholder="perfil_empresa"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-pink-500"
+                      />
+                    </div>
                   </div>
                 </div>
 

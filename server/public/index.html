@@ -64,6 +64,7 @@
       const [showVersionModal, setShowVersionModal] = useState(false);
       const [showChangePassModal, setShowChangePassModal] = useState(false);
       const [selectedCustomerForMachines, setSelectedCustomerForMachines] = useState(null);
+      const [selectedCustomerForValidity, setSelectedCustomerForValidity] = useState(null);
       const [createdLicenseInfo, setCreatedLicenseInfo] = useState(null);
       const [tempPassResult, setTempPassResult] = useState(null);
       const [toastMsg, setToastMsg] = useState('');
@@ -143,7 +144,14 @@
 
       // Ações por Linha
       const handleToggleStatus = async (customer) => {
-        const nextStatus = customer.status === 'blocked' ? 'active' : 'blocked';
+        if (customer.status === 'blocked') {
+          // Se estiver bloqueado, abre o modal para definir os dias e desbloquear
+          setSelectedCustomerForValidity(customer);
+          return;
+        }
+
+        if (!confirm(`Deseja realmente BLOQUEAR o sistema para o cliente ${customer.customerName}? O acesso será suspenso imediatamente.`)) return;
+
         try {
           const res = await fetch(`${API_BASE}/admin/customers/${customer.id}/status`, {
             method: 'PATCH',
@@ -151,11 +159,11 @@
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ status: nextStatus })
+            body: JSON.stringify({ status: 'blocked' })
           });
           const data = await res.json();
           if (data.success) {
-            showToast(`Status de ${customer.customerName} alterado para ${nextStatus.toUpperCase()}`);
+            showToast(`⛔ Acesso de ${customer.customerName} bloqueado com sucesso!`);
             fetchDashboardData();
           }
         } catch (e) {
@@ -354,32 +362,61 @@
           <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
             {/* CARDS DE MÉTRICAS */}
             {metrics && (
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                <div className="bg-slate-900/70 border border-slate-800 p-4 rounded-2xl shadow-sm">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Clientes</span>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div 
+                  onClick={() => setStatusFilter('all')}
+                  className="bg-slate-900/70 border border-slate-800 p-4 rounded-2xl shadow-sm cursor-pointer hover:bg-slate-800/40 transition"
+                >
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Clientes</span>
                   <div className="text-2xl font-bold text-white mt-1">{metrics.totalCustomers}</div>
                   <span className="text-[11px] text-slate-500">Base cadastrada</span>
                 </div>
 
-                <div className="bg-slate-900/70 border border-emerald-500/20 p-4 rounded-2xl shadow-sm">
-                  <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">🟢 Licenças Ativas</span>
+                <div 
+                  onClick={() => setStatusFilter('active')}
+                  className="bg-slate-900/70 border border-emerald-500/20 p-4 rounded-2xl shadow-sm cursor-pointer hover:bg-emerald-950/20 transition"
+                >
+                  <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">🟢 Ativos</span>
                   <div className="text-2xl font-bold text-emerald-400 mt-1">{metrics.activeLicenses}</div>
                   <span className="text-[11px] text-slate-500">Comerciais em dia</span>
                 </div>
 
-                <div className="bg-slate-900/70 border border-amber-500/20 p-4 rounded-2xl shadow-sm">
-                  <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">🟡 Trials Ativos</span>
+                <div 
+                  onClick={() => setStatusFilter('trial')}
+                  className="bg-slate-900/70 border border-amber-500/20 p-4 rounded-2xl shadow-sm cursor-pointer hover:bg-amber-950/20 transition"
+                >
+                  <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">🟡 Trials</span>
                   <div className="text-2xl font-bold text-amber-400 mt-1">{metrics.runningTrials}</div>
-                  <span className="text-[11px] text-slate-500">Demonstração (20 envios)</span>
+                  <span className="text-[11px] text-slate-500">Demonstração</span>
                 </div>
 
-                <div className="bg-slate-900/70 border border-red-500/20 p-4 rounded-2xl shadow-sm">
+                <div 
+                  onClick={() => setStatusFilter('expiring_soon')}
+                  className="bg-slate-900/70 border border-amber-500/40 p-4 rounded-2xl shadow-sm cursor-pointer hover:bg-amber-950/30 transition relative overflow-hidden"
+                  title="Clique para filtrar clientes com bloqueio em até 5 dias"
+                >
+                  <span className="text-xs font-semibold text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                    <span>⚠️</span> Vence em ≤ 5d
+                  </span>
+                  <div className="text-2xl font-bold text-amber-300 mt-1 flex items-center gap-2">
+                    {metrics.expiringSoonLicenses || 0}
+                    {metrics.expiringSoonLicenses > 0 && (
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-500">Aviso prévio ativo</span>
+                </div>
+
+                <div 
+                  onClick={() => setStatusFilter('blocked')}
+                  className="bg-slate-900/70 border border-red-500/20 p-4 rounded-2xl shadow-sm cursor-pointer hover:bg-red-950/20 transition"
+                >
                   <span className="text-xs font-semibold text-red-400 uppercase tracking-wider">🔴 Bloqueados</span>
                   <div className="text-2xl font-bold text-red-400 mt-1">{metrics.blockedLicenses}</div>
                   <span className="text-[11px] text-slate-500">Acesso suspenso</span>
                 </div>
 
-                <div className="bg-slate-900/70 border border-indigo-500/20 p-4 rounded-2xl shadow-sm col-span-2 lg:col-span-1">
+                <div className="bg-slate-900/70 border border-indigo-500/20 p-4 rounded-2xl shadow-sm">
                   <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Versão Vigente</span>
                   <div className="text-xl font-bold text-indigo-300 mt-1">v{metrics.latestVersion}</div>
                   <span className="text-[11px] text-slate-500">Mín: v{metrics.minVersionRequired}</span>
@@ -398,7 +435,7 @@
                 </button>
 
                 <div className="flex items-center bg-slate-950 border border-slate-700 rounded-xl p-1 text-xs">
-                  {['all', 'active', 'trial', 'blocked', 'expired'].map((st) => (
+                  {['all', 'active', 'trial', 'expiring_soon', 'blocked', 'expired'].map((st) => (
                     <button
                       key={st}
                       onClick={() => setStatusFilter(st)}
@@ -406,7 +443,7 @@
                         statusFilter === st ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      {st === 'all' ? 'Todos' : st === 'active' ? 'Ativos' : st === 'trial' ? 'Trials' : st === 'blocked' ? 'Bloqueados' : 'Expirados'}
+                      {st === 'all' ? 'Todos' : st === 'active' ? 'Ativos' : st === 'trial' ? 'Trials' : st === 'expiring_soon' ? '⚠️ A Vencer (≤ 5d)' : st === 'blocked' ? 'Bloqueados' : 'Expirados'}
                     </button>
                   ))}
                 </div>
@@ -452,8 +489,14 @@
                       </tr>
                     ) : (
                       customers.map((c) => {
-                        const isExpired = c.expiresAt && new Date(c.expiresAt).getTime() < Date.now();
+                        const now = Date.now();
+                        const isExpired = c.expiresAt && new Date(c.expiresAt).getTime() < now;
                         const isBlocked = c.status === 'blocked';
+                        let daysRemaining = null;
+                        if (c.expiresAt) {
+                          daysRemaining = Math.ceil((new Date(c.expiresAt).getTime() - now) / (1000 * 60 * 60 * 24));
+                        }
+                        const isExpiringSoon = !isBlocked && !isExpired && daysRemaining !== null && daysRemaining > 0 && daysRemaining <= 5;
 
                         return (
                           <tr key={c.id} className="hover:bg-slate-800/40 transition">
@@ -526,12 +569,46 @@
                             </td>
 
                             <td className="py-3 px-4 text-[11px]">
-                              {c.expiresAt ? (
-                                <span className={isExpired ? 'text-red-400 font-semibold' : 'text-slate-300'}>
-                                  {new Date(c.expiresAt).toLocaleDateString('pt-BR')}
-                                </span>
+                              {isBlocked ? (
+                                <div className="flex flex-col">
+                                  <span className="text-red-400 font-semibold flex items-center gap-1">
+                                    <span>⛔</span> Bloqueado
+                                  </span>
+                                  {c.expiresAt && (
+                                    <span className="text-[10px] text-slate-500 font-mono">
+                                      Data: {new Date(c.expiresAt).toLocaleDateString('pt-BR')}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : isExpired ? (
+                                <div className="flex flex-col">
+                                  <span className="text-red-400 font-semibold flex items-center gap-1">
+                                    <span>🔴</span> Expirou ({new Date(c.expiresAt).toLocaleDateString('pt-BR')})
+                                  </span>
+                                  <span className="text-[10px] text-red-400/80">Necessita renovação</span>
+                                </div>
+                              ) : isExpiringSoon ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="px-2 py-0.5 rounded-md font-bold bg-amber-500/25 text-amber-300 border border-amber-500/40 animate-pulse text-[10px] inline-flex items-center gap-1 w-fit">
+                                    <span>⚠️</span> Vence em {daysRemaining} dia{daysRemaining > 1 ? 's' : ''}!
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {new Date(c.expiresAt).toLocaleDateString('pt-BR')}
+                                  </span>
+                                </div>
+                              ) : c.expiresAt ? (
+                                <div className="flex flex-col">
+                                  <span className="text-slate-200 font-medium font-mono">
+                                    {new Date(c.expiresAt).toLocaleDateString('pt-BR')}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">
+                                    {daysRemaining} dias restantes
+                                  </span>
+                                </div>
                               ) : (
-                                <span className="text-emerald-400 font-semibold">Vitalício</span>
+                                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                                  <span>♾️</span> Vitalício
+                                </span>
                               )}
                             </td>
 
@@ -544,9 +621,17 @@
                                       ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900/60' 
                                       : 'bg-red-950/40 text-red-300 border-red-500/40 hover:bg-red-900/60'
                                   }`}
-                                  title={isBlocked ? 'Reativar cliente' : 'Bloquear cliente'}
+                                  title={isBlocked ? 'Definir dias e desbloquear' : 'Bloquear cliente'}
                                 >
-                                  {isBlocked ? 'Desbloquear' : 'Bloquear'}
+                                  {isBlocked ? '🔓 Desbloquear' : '⛔ Bloquear'}
+                                </button>
+
+                                <button
+                                  onClick={() => setSelectedCustomerForValidity(c)}
+                                  className="px-2 py-1 rounded text-[11px] bg-indigo-950/40 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-900/60 transition flex items-center gap-1 font-semibold"
+                                  title="Ajustar validade ou estender dias de acesso"
+                                >
+                                  ⏳ Validade
                                 </button>
 
                                 <button
@@ -571,14 +656,6 @@
                                   title="Gera uma senha temporária"
                                 >
                                   🔑 Senha
-                                </button>
-
-                                <button
-                                  onClick={() => handleExtend30Days(c)}
-                                  className="px-2 py-1 rounded text-[11px] bg-indigo-950/40 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-900/60 transition"
-                                  title="Adiciona 30 dias de validade"
-                                >
-                                  +30 Dias
                                 </button>
 
                                 <button
@@ -725,6 +802,18 @@
               customer={selectedCustomerForMachines}
               token={token}
               onClose={() => setSelectedCustomerForMachines(null)}
+              onUpdated={() => {
+                fetchDashboardData();
+              }}
+            />
+          )}
+
+          {/* MODAL 7: CONTROLE DE VALIDADE E DIAS DE DESBLOQUEIO */}
+          {selectedCustomerForValidity && (
+            <SetValidityModal
+              customer={selectedCustomerForValidity}
+              token={token}
+              onClose={() => setSelectedCustomerForValidity(null)}
               onUpdated={() => {
                 fetchDashboardData();
               }}
@@ -1308,6 +1397,231 @@
                 Fechar
               </button>
             </div>
+          </div>
+        </div>
+      );
+    }
+
+    // COMPONENTE: MODAL PARA DEFINIR VALIDADE / DIAS DE DESBLOQUEIO
+    function SetValidityModal({ customer, token, onClose, onUpdated }) {
+      const [days, setDays] = useState(30);
+      const [mode, setMode] = useState('from_now'); // 'from_now' | 'extend' | 'lifetime'
+      const [customDays, setCustomDays] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [msg, setMsg] = useState('');
+
+      const presets = [
+        { label: '3 Dias (Teste)', value: 3 },
+        { label: '7 Dias (1 Sem)', value: 7 },
+        { label: '15 Dias (15d)', value: 15 },
+        { label: '30 Dias (1 Mês)', value: 30 },
+        { label: '60 Dias (2 Meses)', value: 60 },
+        { label: '90 Dias (Trimestre)', value: 90 },
+        { label: '180 Dias (Semestre)', value: 180 },
+        { label: '365 Dias (1 Ano)', value: 365 },
+      ];
+
+      const currentExpiry = customer.expiresAt ? new Date(customer.expiresAt) : null;
+      const isExpired = currentExpiry && currentExpiry.getTime() < Date.now();
+
+      // Previsão da data de corte calculada em tempo real
+      let previewText = '';
+      if (mode === 'lifetime') {
+        previewText = 'Acesso Vitalício Ilimitado (Sem corte)';
+      } else {
+        const numDays = customDays ? parseInt(customDays, 10) : days;
+        if (!isNaN(numDays) && numDays > 0) {
+          const baseTime = (mode === 'extend' && currentExpiry && !isExpired) 
+            ? currentExpiry.getTime() 
+            : Date.now();
+          const target = new Date(baseTime + numDays * 24 * 60 * 60 * 1000);
+          previewText = target.toLocaleDateString('pt-BR') + ' às ' + target.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        } else {
+          previewText = 'Informe a quantidade de dias válida';
+        }
+      }
+
+      const handleConfirm = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setMsg('');
+
+        let finalDays = null;
+        if (mode !== 'lifetime') {
+          finalDays = customDays ? parseInt(customDays, 10) : days;
+          if (isNaN(finalDays) || finalDays <= 0) {
+            setMsg('❌ Informe uma quantidade válida de dias.');
+            setLoading(false);
+            return;
+          }
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/admin/customers/${customer.id}/set-validity`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              days: finalDays,
+              mode: mode === 'lifetime' ? 'lifetime' : mode
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setMsg('✅ ' + data.message);
+            setTimeout(() => {
+              onUpdated();
+              onClose();
+            }, 600);
+          } else {
+            setMsg(`❌ ${data.error || 'Erro ao definir validade'}`);
+          }
+        } catch (err) {
+          setMsg('❌ Falha na conexão com o servidor.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>⏳</span> Desbloquear & Definir Validade
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Cliente: <strong className="text-emerald-400">{customer.customerName}</strong> ({customer.licenseKey})
+                </p>
+              </div>
+              <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            {msg && <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200">{msg}</div>}
+
+            <form onSubmit={handleConfirm} className="space-y-4 text-xs">
+              {/* Opções de Modo */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Como deseja aplicar a liberação?
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode('from_now')}
+                    className={`p-2.5 rounded-xl border text-center font-semibold transition ${
+                      mode === 'from_now'
+                        ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-base mb-0.5">🗓️</div>
+                    <div className="text-[11px]">A partir de Hoje</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMode('extend')}
+                    className={`p-2.5 rounded-xl border text-center font-semibold transition ${
+                      mode === 'extend'
+                        ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-base mb-0.5">➕</div>
+                    <div className="text-[11px]">Somar aos Dias Atuais</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMode('lifetime')}
+                    className={`p-2.5 rounded-xl border text-center font-semibold transition ${
+                      mode === 'lifetime'
+                        ? 'bg-amber-950/60 border-amber-500 text-amber-300 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-base mb-0.5">♾️</div>
+                    <div className="text-[11px]">Vitalício (Sem Corte)</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Presets de Dias (se não for vitalício) */}
+              {mode !== 'lifetime' && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                    Selecione um Período Rápido:
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {presets.map(p => (
+                      <button
+                        key={p.value}
+                        type="button"
+                        onClick={() => { setDays(p.value); setCustomDays(''); }}
+                        className={`py-2 px-1 rounded-lg border text-center font-medium transition ${
+                          days === p.value && !customDays
+                            ? 'bg-emerald-600 text-white border-emerald-500 font-bold shadow-md'
+                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Campo de dias personalizados */}
+                  <div className="mt-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
+                    <span className="text-[11px] text-slate-400 font-medium">Ou digite outra quantidade de dias:</span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="Ex: 10"
+                        value={customDays}
+                        onChange={e => setCustomDays(e.target.value)}
+                        className="w-20 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white text-center font-bold focus:border-emerald-500 outline-none"
+                      />
+                      <span className="text-xs text-slate-400 font-semibold">dias</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Card de Resumo e Previsão de Bloqueio */}
+              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Resultado da Liberação:</span>
+                <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                  <span className="text-slate-300">🔒 Bloqueio automático:</span>
+                  <span className="text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800">{previewText}</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {mode === 'lifetime' 
+                    ? 'O cliente terá acesso ilimitado sem interrupções por data.' 
+                    : '💡 Faltando 5 dias para esta data, o aplicativo do cliente exibirá um aviso automático para renovação.'}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center gap-1.5"
+                >
+                  {loading ? 'Processando...' : '🔓 Confirmar Liberação'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       );

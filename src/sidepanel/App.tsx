@@ -16,7 +16,8 @@ import {
   Users, 
   Send, 
   Bot, 
-  Settings
+  Settings,
+  AlertTriangle
 } from 'lucide-react';
 import { Tooltip } from './components/Tooltip';
 
@@ -37,6 +38,7 @@ export const App: React.FC = () => {
     isTrial: boolean;
     dailyLimit?: number;
     message?: string;
+    expiresAt?: string | null;
   } | null>(null);
 
   const fetchLicense = async () => {
@@ -121,6 +123,11 @@ export const App: React.FC = () => {
   const { isEmergencyBypassed } = useAdminStore();
   const isLocked = !isEmergencyBypassed && (licenseData?.status === 'blocked' || licenseData?.status === 'expired' || licenseData?.status === 'hardware_mismatch');
 
+  const daysRemaining = licenseData?.expiresAt 
+    ? Math.ceil((new Date(licenseData.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isExpiringSoon = !isLocked && daysRemaining !== null && daysRemaining > 0 && daysRemaining <= 5 && (licenseData?.status === 'active' || licenseData?.status === 'trial');
+
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden select-none relative">
       {/* Modal de Atualização Obrigatória (Versão Descontinuada pelo Servidor Central) */}
@@ -149,6 +156,25 @@ export const App: React.FC = () => {
 
       {/* 1. CABEÇALHO SUPERIOR ELEGANTE COM STATUS */}
       <Header />
+
+      {/* Banner de Aviso de Expiração em Breve (≤ 5 dias) */}
+      {isExpiringSoon && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-200 shrink-0">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
+            <span>
+              <strong>Aviso de Expiração:</strong> Seu acesso ao Click Lead Storm expira em <strong className="text-amber-300 font-extrabold">{daysRemaining} dia{daysRemaining > 1 ? 's' : ''}</strong> ({new Date(licenseData!.expiresAt!).toLocaleDateString('pt-BR')}). Renove sua assinatura para evitar interrupções.
+            </span>
+          </div>
+          <button 
+            type="button"
+            onClick={() => window.open(`https://wa.me/5511996773805?text=${encodeURIComponent(`Olá Eduardo! Minha licença do Click Lead Storm (${licenseData?.customerName || 'Estação'}) expira em ${daysRemaining} dias e gostaria de renovar.`)}`, '_blank')}
+            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1 rounded-lg text-[11px] transition shadow flex items-center gap-1.5 shrink-0"
+          >
+            <span>💬 Renovar Acesso no WhatsApp</span>
+          </button>
+        </div>
+      )}
 
       {/* 2. BARRA DE NAVEGAÇÃO REFINADA (ESTILO PILL MODERNO) */}
       <nav className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-1.5 flex gap-1.5 items-center overflow-x-auto scrollbar-none">

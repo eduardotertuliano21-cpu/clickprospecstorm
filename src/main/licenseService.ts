@@ -408,6 +408,7 @@ class LicenseService {
         lic.status = body.license.status || 'active';
         lic.isTrial = !!body.license.isTrial;
         lic.dailyLimit = body.license.dailyLimit;
+        lic.expiresAt = body.license.expiresAt !== undefined ? body.license.expiresAt : lic.expiresAt;
         lic.customerName = body.license.customerName || lic.customerName;
         lic.ownerEmail = body.license.customerEmail || lic.ownerEmail;
         lic.lastCheckedAt = new Date().toISOString();

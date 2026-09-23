@@ -31,7 +31,8 @@ import {
   Lock,
   LogOut,
   KeyRound,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { useAdminStore } from '../../stores/useAdminStore';
 
@@ -413,7 +414,7 @@ export const SettingsTab: React.FC = () => {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs">
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
                 <span className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">Cliente / Empresa Vinculada</span>
                 <div className="font-bold text-white flex items-center gap-1.5 truncate">
@@ -442,6 +443,50 @@ export const SettingsTab: React.FC = () => {
                 <div className="text-[10px] text-slate-500 mt-0.5">
                   Cota: {stationLicense.dailyLimit >= 99999 ? 'Ilimitado' : `${stationLicense.dailyLimit} envios/dia`}
                 </div>
+              </div>
+
+              <div className={`p-3 rounded-xl border ${
+                stationLicense.expiresAt && Math.ceil((new Date(stationLicense.expiresAt).getTime() - Date.now()) / 86400000) <= 5 && Math.ceil((new Date(stationLicense.expiresAt).getTime() - Date.now()) / 86400000) > 0
+                  ? 'bg-amber-500/10 border-amber-500/30'
+                  : 'bg-slate-950 border border-slate-800/80'
+              }`}>
+                <span className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">Validade do Acesso</span>
+                {stationLicense.expiresAt ? (() => {
+                  const days = Math.ceil((new Date(stationLicense.expiresAt).getTime() - Date.now()) / 86400000);
+                  const isExpSoon = days <= 5 && days > 0;
+                  const isExpired = days <= 0;
+                  return (
+                    <div>
+                      <div className={`font-bold flex items-center gap-1.5 ${
+                        isExpired ? 'text-rose-400' : isExpSoon ? 'text-amber-300' : 'text-emerald-400'
+                      }`}>
+                        {isExpired ? '🔴 Expirada' : isExpSoon ? (
+                          <>
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>Vence em {days} dia{days > 1 ? 's' : ''}</span>
+                          </>
+                        ) : `🟢 Válida (${days}d)`}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {isExpired ? 'Expirou em' : 'Até'}: {new Date(stationLicense.expiresAt).toLocaleDateString('pt-BR')}
+                      </div>
+                      {isExpSoon && (
+                        <button
+                          type="button"
+                          onClick={() => window.open(`https://wa.me/5511996773805?text=${encodeURIComponent(`Olá Eduardo! Gostaria de renovar a licença do Click Lead Storm (${stationLicense.customerName || 'Estação'}) que expira em ${days} dias.`)}`, '_blank')}
+                          className="mt-1 text-[10px] text-amber-300 font-bold hover:underline block"
+                        >
+                          Renovar no WhatsApp &rarr;
+                        </button>
+                      )}
+                    </div>
+                  );
+                })() : (
+                  <div>
+                    <div className="font-bold text-emerald-400">♾️ Vitalício</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Sem prazo de expiração</div>
+                  </div>
+                )}
               </div>
             </div>
 

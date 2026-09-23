@@ -11,7 +11,8 @@ import {
   Terminal,
   Building2,
   Monitor,
-  ShieldCheck
+  ShieldCheck,
+  AlertTriangle
 } from 'lucide-react';
 import { campaignRepository } from '../../db/repositories/campaignRepository';
 import { settingsRepository } from '../../db/repositories/settingsRepository';
@@ -200,22 +201,38 @@ export const Header: React.FC = () => {
         </div>
 
         {/* Identificação da Estação e Cliente Conectado */}
-        {stationLicense && (
-          <div 
-            className="hidden lg:flex items-center gap-2 bg-slate-950/90 border border-slate-800/90 px-3 py-1.5 rounded-xl text-[11px] font-mono shadow-sm cursor-help"
-            title={`IDENTIFICAÇÃO DESTA ESTAÇÃO:\nEmpresa / Cliente: ${stationLicense.customerName || (stationLicense.isTrial ? 'Demonstração (Trial)' : 'Cliente Local')}\nComputador: ${stationLicense.hostname || 'DESKTOP-CLIENT'}\nID Hardware: ${stationLicense.machineId}\nStatus: ${stationLicense.status === 'active' ? 'Ativo / Licenciado' : stationLicense.status}`}
-          >
-            <div className="flex items-center gap-1.5 text-emerald-400 font-semibold truncate max-w-[170px]">
-              <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="truncate">{stationLicense.customerName || (stationLicense.isTrial ? 'Modo Demonstração' : 'Cliente Conectado')}</span>
+        {stationLicense && (() => {
+          const daysRemaining = stationLicense.expiresAt 
+            ? Math.ceil((new Date(stationLicense.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+            : null;
+          const isExpiringSoon = daysRemaining !== null && daysRemaining > 0 && daysRemaining <= 5 && (stationLicense.status === 'active' || stationLicense.status === 'trial');
+
+          return (
+            <div 
+              className="hidden lg:flex items-center gap-2 bg-slate-950/90 border border-slate-800/90 px-3 py-1.5 rounded-xl text-[11px] font-mono shadow-sm cursor-help"
+              title={`IDENTIFICAÇÃO DESTA ESTAÇÃO:\nEmpresa / Cliente: ${stationLicense.customerName || (stationLicense.isTrial ? 'Demonstração (Trial)' : 'Cliente Local')}\nComputador: ${stationLicense.hostname || 'DESKTOP-CLIENT'}\nID Hardware: ${stationLicense.machineId}\nStatus: ${stationLicense.status === 'active' ? 'Ativo / Licenciado' : stationLicense.status}\nValidade: ${stationLicense.expiresAt ? new Date(stationLicense.expiresAt).toLocaleDateString('pt-BR') : 'Vitalício'}`}
+            >
+              <div className="flex items-center gap-1.5 text-emerald-400 font-semibold truncate max-w-[170px]">
+                <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="truncate">{stationLicense.customerName || (stationLicense.isTrial ? 'Modo Demonstração' : 'Cliente Conectado')}</span>
+              </div>
+              <span className="text-slate-700 font-sans">|</span>
+              <div className="flex items-center gap-1 text-slate-300 truncate max-w-[130px]">
+                <Monitor className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <span className="truncate text-slate-200">{stationLicense.hostname || 'PC-Local'}</span>
+              </div>
+              {isExpiringSoon && (
+                <>
+                  <span className="text-slate-700 font-sans">|</span>
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse">
+                    <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                    <span>Vence em {daysRemaining}d</span>
+                  </div>
+                </>
+              )}
             </div>
-            <span className="text-slate-700 font-sans">|</span>
-            <div className="flex items-center gap-1 text-slate-300 truncate max-w-[130px]">
-              <Monitor className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              <span className="truncate text-slate-200">{stationLicense.hostname || 'PC-Local'}</span>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div className="flex items-center gap-3">
           {/* Contador Diário */}

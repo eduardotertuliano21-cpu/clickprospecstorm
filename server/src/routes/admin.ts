@@ -21,6 +21,7 @@ adminRouter.get('/metrics', (_req: AuthRequest, res: Response): void => {
     let trialCount = 0;
     let blockedCount = 0;
     let expiredCount = 0;
+    let expiringSoonCount = 0;
     let grossRevenue = 0;
 
     customers.forEach(c => {
@@ -30,10 +31,18 @@ adminRouter.get('/metrics', (_req: AuthRequest, res: Response): void => {
         blockedCount++;
       } else if (c.expiresAt && new Date(c.expiresAt).getTime() < now) {
         expiredCount++;
-      } else if (c.isTrial || c.licenseType === 'trial') {
-        trialCount++;
-      } else if (c.status === 'active') {
-        activeCount++;
+      } else {
+        if (c.expiresAt) {
+          const daysLeft = Math.ceil((new Date(c.expiresAt).getTime() - now) / (1000 * 60 * 60 * 24));
+          if (daysLeft > 0 && daysLeft <= 5) {
+            expiringSoonCount++;
+          }
+        }
+        if (c.isTrial || c.licenseType === 'trial') {
+          trialCount++;
+        } else if (c.status === 'active') {
+          activeCount++;
+        }
       }
     });
 
@@ -47,6 +56,7 @@ adminRouter.get('/metrics', (_req: AuthRequest, res: Response): void => {
         runningTrials: trialCount,
         blockedLicenses: blockedCount,
         expiredLicenses: expiredCount,
+        expiringSoonLicenses: expiringSoonCount,
         grossRevenue,
         minVersionRequired: versionConfig.minVersionRequired,
         latestVersion: versionConfig.latestVersion
@@ -73,6 +83,11 @@ adminRouter.get('/customers', (req: AuthRequest, res: Response): void => {
         const isExpired = c.expiresAt && new Date(c.expiresAt).getTime() < now;
         if (status === 'expired') return isExpired && c.status !== 'blocked';
         if (status === 'blocked') return c.status === 'blocked';
+        if (status === 'expiring_soon') {
+          if (c.status === 'blocked' || isExpired || !c.expiresAt) return false;
+          const daysLeft = Math.ceil((new Date(c.expiresAt).getTime() - now) / (1000 * 60 * 60 * 24));
+          return daysLeft > 0 && daysLeft <= 5;
+        }
         if (status === 'trial') return (c.isTrial || c.licenseType === 'trial') && !isExpired && c.status !== 'blocked';
         if (status === 'active') return c.status === 'active' && !c.isTrial && !isExpired;
         return c.status === status;
@@ -122,20 +137,88 @@ adminRouter.get('/customers', (req: AuthRequest, res: Response): void => {
 adminRouter.patch('/customers/:id/status', (req: AuthRequest, res: Response): void => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, days } = req.body;
 
     if (!['active', 'blocked'].includes(status)) {
       res.status(400).json({ success: false, error: "Status inválido. Use 'active' ou 'blocked'." });
       return;
     }
 
-    const updated = db.updateCustomer(id, { status });
-    if (!updated) {
+    const customer = db.findCustomerById(id);
+    if (!customer) {
       res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
       return;
     }
 
+    const updates: any = { status };
+
+    // Ao desbloquear e definir dias de acesso
+    if (status === 'active' && days !== undefined) {
+      if (days === null || days === 'lifetime' || days === 0) {
+        updates.expiresAt = null;
+      } else {
+        const numDays = parseInt(days, 10);
+        if (!isNaN(numDays) && numDays > 0) {
+          updates.expiresAt = new Date(Date.now() + numDays * 24 * 60 * 60 * 1000).toISOString();
+        }
+      }
+    }
+
+    const updated = db.updateCustomer(id, updates);
     res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 3.1 POST /api/v1/admin/customers/:id/set-validity
+ * Define validade personalizada em dias a partir de hoje ou estende a data existente.
+ */
+adminRouter.post('/customers/:id/set-validity', (req: AuthRequest, res: Response): void => {
+  try {
+    const { id } = req.params;
+    const { days, mode = 'from_now' } = req.body; // 'from_now' | 'extend' | 'lifetime'
+
+    const customer = db.findCustomerById(id);
+    if (!customer) {
+      res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
+      return;
+    }
+
+    let newExpiresAt: string | null = null;
+
+    if (mode === 'lifetime' || days === 'lifetime' || days === null) {
+      newExpiresAt = null;
+    } else {
+      const numDays = parseInt(days, 10);
+      if (isNaN(numDays) || numDays <= 0) {
+        res.status(400).json({ success: false, error: 'Informe uma quantidade válida de dias.' });
+        return;
+      }
+
+      if (mode === 'extend') {
+        const currentExpiry = customer.expiresAt ? new Date(customer.expiresAt).getTime() : Date.now();
+        const baseTime = Math.max(Date.now(), currentExpiry);
+        newExpiresAt = new Date(baseTime + numDays * 24 * 60 * 60 * 1000).toISOString();
+      } else {
+        // 'from_now' - desbloqueia contando X dias a partir do momento atual
+        newExpiresAt = new Date(Date.now() + numDays * 24 * 60 * 60 * 1000).toISOString();
+      }
+    }
+
+    const updated = db.updateCustomer(id, {
+      expiresAt: newExpiresAt,
+      status: 'active'
+    });
+
+    res.json({
+      success: true,
+      message: newExpiresAt 
+        ? `Acesso liberado até ${new Date(newExpiresAt).toLocaleDateString('pt-BR')} (${days} dias a partir de agora).`
+        : 'Licença definida como Vitalícia (acesso ilimitado).',
+      data: updated
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

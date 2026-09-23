@@ -46,8 +46,13 @@
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
+    "installerIcon": "public/icons/icon.ico",
+    "uninstallerIcon": "public/icons/icon.ico",
+    "installerHeaderIcon": "public/icons/icon.ico",
+    "createDesktopShortcut": "always",
     "createStartMenuShortcut": true,
-    "shortcutName": "Click Lead Storm"
+    "shortcutName": "Click Lead Storm",
+    "runAfterFinish": true,
+    "deleteAppDataOnUninstall": false
   }
 }
